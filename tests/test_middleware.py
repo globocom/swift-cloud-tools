@@ -32,7 +32,7 @@ class HealthcheckMiddlewareTest(DatabaseTestCase):
     def test_middleware_request_with_healthcheck_path(self, mock_is_db_ok, mock_is_keystone_ok):
         mock_is_db_ok.return_value = True
         mock_is_keystone_ok.return_value = True
-        resp = Request.blank('/healthcheck',
+        resp = Request.blank('/v1/healthcheck',
                              environ=self.environ).get_response(self.app)
 
         self.assertEqual(resp.body.decode('utf-8'), "WORKING")
@@ -41,7 +41,7 @@ class HealthcheckMiddlewareTest(DatabaseTestCase):
     @patch("swift_cloud_tools.middleware.HealthcheckMiddleware._is_db_ok")
     def test_middleware_request_with_database_not_working(self, mock_is_db_ok, _):
         mock_is_db_ok.return_value = False
-        resp = Request.blank('/healthcheck',
+        resp = Request.blank('/v1/healthcheck',
                              environ=self.environ).get_response(self.app)
 
         self.assertEqual(resp.body.decode('utf-8'), "db_fail")
@@ -50,7 +50,7 @@ class HealthcheckMiddlewareTest(DatabaseTestCase):
     @patch("swift_cloud_tools.middleware.HealthcheckMiddleware._is_db_ok")
     def test_middleware_request_with_keystone_not_working(self, _, mock_is_keystone_ok):
         mock_is_keystone_ok.return_value = False
-        resp = Request.blank('/healthcheck',
+        resp = Request.blank('/v1/healthcheck',
                              environ=self.environ).get_response(self.app)
 
         self.assertEqual(resp.body.decode('utf-8'), "keystone_fail")
@@ -60,7 +60,7 @@ class HealthcheckMiddlewareTest(DatabaseTestCase):
     def test_middleware_request_with_database_and_keystone_not_working(self, mock_is_db_ok, mock_is_keystone_ok):
         mock_is_db_ok.return_value = False
         mock_is_keystone_ok.return_value = False
-        resp = Request.blank('/healthcheck',
+        resp = Request.blank('/v1/healthcheck',
                              environ=self.environ).get_response(self.app)
 
         self.assertEqual(resp.body.decode('utf-8'), "db_fail:keystone_fail")

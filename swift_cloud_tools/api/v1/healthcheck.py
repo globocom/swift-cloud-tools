@@ -1,21 +1,35 @@
 # -*- coding: utf-8 -*-
 import json
+import flask
+import six
 
 from flask import Response, Blueprint
+from flask_restplus import Resource
 from flask import current_app as app
 from sqlalchemy import create_engine
 
+from swift_cloud_tools.api.v1 import api
 from swift_cloud_tools.models import db
 
+ns = api.namespace('healthcheck', description='Healthcheck')
 
-api = Blueprint('api', __name__)
-
-@api.route('/healthcheck')
-def healthcheck():
-    return "WORKING", 200
+def text(data, code, headers=None):
+    return flask.make_response(six.text_type(data))
 
 
-@api.route('/checklist')
+@ns.route('/')
+class healthcheck(Resource):
+    representations = {
+        'text/plain': text,
+    }
+
+    @api.doc(responses={
+        200: 'Success',
+    })
+    def get(self):
+        return checklist()
+
+
 def checklist():
     fails = []
 

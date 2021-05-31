@@ -24,8 +24,8 @@ def create_app(config_module=None):
 
     CORS(app, resources={r"/v1/*": {"origins": "*"}})
 
-    from swift_cloud_tools.api import api
-    app.register_blueprint(api)
+    from swift_cloud_tools.api.v1.api import blueprint as api_v1
+    app.register_blueprint(api_v1)
 
     return app
 

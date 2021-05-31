@@ -19,7 +19,7 @@ class HealthcheckMiddleware(object):
         # logger.info('Starting HealthcheckMiddleware')
         self.app = app
         self.conf = conf
-        self.url = conf.get("url", "/healthcheck")
+        self.url = conf.get("url", "/v1/healthcheck")
         self.message = conf.get("message", "WORKING")
 
     def __call__(self, environ, start_response):
