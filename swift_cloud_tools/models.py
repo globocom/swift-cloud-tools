@@ -17,14 +17,15 @@ class SaveDeleteModel():
         return '', 200
 
 
-class DeletedObject(db.Model, SaveDeleteModel):
+class ExpiredObject(db.Model, SaveDeleteModel):
     id = db.Column(db.Integer, primary_key=True)
-    path = db.Column(db.String(255), unique=True)
+    account = db.Column(db.String(80), nullable=False)
+    container = db.Column(db.String(255), nullable=False)
+    obj = db.Column('object', db.String(255), nullable=False)
     date = db.Column(db.DateTime, nullable=False)
 
     def __init__(self, app_name=None, name=None):
-        self.path = path
+        self.account = account
+        self.container = container
+        self.obj = obj
         self.date = date
-
-    def __repr__(self):
-        return '<{}>'.format(self.path)

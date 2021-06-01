@@ -16,3 +16,4 @@ python-keystoneclient==3.18.0
 requests==2.18.4
 SQLAlchemy==1.2.16
 Werkzeug==0.14.1
+google-cloud-storage==1.36.2
