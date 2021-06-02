@@ -26,7 +26,7 @@ def _get_client():
 
 async def work():
     client = _get_client()
-    app = create_app('config/{}_config.py'.format(os.environ.get("FLASK_ENV")))
+    app = create_app('config/{}_config.py'.format(os.environ.get("FLASK_CONFIG")))
     ctx = app.app_context()
     ctx.push()
 
@@ -58,7 +58,7 @@ async def work():
                 blob.delete()
 
         print("Task Executed")
-        await asyncio.sleep(int(os.environ.get("SCT_EXPIRY_TIME", '3600')))
+        await asyncio.sleep(int(os.environ.get("EXPIRY_TIME", '3600')))
 
 
 if __name__ == '__main__':

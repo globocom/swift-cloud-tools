@@ -10,12 +10,12 @@ def generate_conf(file):
     template = env.get_template('swift_cloud_tools_template.conf')
 
     data = {
-        'auth_url' : os.environ.get("SWIFT_CLOUD_TOOLS_KEYSTONE_URL"),
-        'auth_uri' : os.environ.get("SWIFT_CLOUD_TOOLS_KEYSTONE_URL"),
-        'username' : os.environ.get("SWIFT_CLOUD_TOOLS_KEYSTONE_SERVICE_USER"),
-        'password' : os.environ.get("SWIFT_CLOUD_TOOLS_KEYSTONE_SERVICE_PASSWORD"),
-        'project_name' : os.environ.get("SWIFT_CLOUD_TOOLS_KEYSTONE_SERVICE_PROJECT"),
-        'database_uri' : os.environ.get("DBAAS_MYSQL_ENDPOINT")
+        'auth_url' : os.environ.get("KEYSTONE_URL"),
+        'auth_uri' : os.environ.get("KEYSTONE_URL"),
+        'username' : os.environ.get("KEYSTONE_SERVICE_USER"),
+        'password' : os.environ.get("KEYSTONE_SERVICE_PASSWORD"),
+        'project_name' : os.environ.get("KEYSTONE_SERVICE_PROJECT"),
+        'database_uri' : os.environ.get("SQLALCHEMY_DATABASE_URI")
     }
 
     with open(file, 'w') as f:
