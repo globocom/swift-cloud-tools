@@ -3,7 +3,7 @@ import json
 import flask
 import six
 
-from flask import Response, Blueprint
+from flask import Response
 from flask_restplus import Resource
 from flask import current_app as app
 from sqlalchemy import create_engine

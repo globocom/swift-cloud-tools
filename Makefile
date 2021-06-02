@@ -18,5 +18,8 @@ clean: ## Clear *.pyc files, etc
 run: ## Run a development web server
 	@PYTHONPATH=`pwd`:$PYTHONPATH python3.6 run.py
 
+run_expirer: ## Run expirer
+	@PYTHONPATH=`pwd`:$PYTHONPATH python swift_cloud_tools/server/expirer.py
+
 tests: clean ## Run all tests with coverage
 	@py.test --cov-config .coveragerc --cov $(PROJECT_HOME) --cov-report term-missing

@@ -18,7 +18,6 @@ def create_app(config_module=None):
         config_file = 'config/development_config.py'
     app.config.from_pyfile(config_file)
 
-
     db.init_app(app)
     migrate = Migrate(app, db)
 

@@ -53,19 +53,22 @@ async def work():
                 continue
 
             res = raw.delete()
+
             if res[1] == 200:
                 blob.delete()
 
         print("Task Executed")
         await asyncio.sleep(int(os.environ.get("SCT_EXPIRY_TIME", '3600')))
 
-loop = asyncio.get_event_loop()
 
-try:
-    asyncio.ensure_future(work())
-    loop.run_forever()
-except KeyboardInterrupt:
-    pass
-finally:
-    print("Closing Loop")
-    loop.close()
+if __name__ == '__main__':
+    loop = asyncio.get_event_loop()
+
+    try:
+        asyncio.ensure_future(work())
+        loop.run_forever()
+    except KeyboardInterrupt:
+        pass
+    finally:
+        print("Closing Loop")
+        loop.close()
