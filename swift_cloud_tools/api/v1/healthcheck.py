@@ -3,7 +3,6 @@ import json
 import flask
 import six
 
-from flask import Response
 from flask_restplus import Resource
 from flask import current_app as app
 from sqlalchemy import create_engine
@@ -13,46 +12,34 @@ from swift_cloud_tools.models import db
 
 ns = api.namespace('healthcheck', description='Healthcheck')
 
-def text(data, code, headers=None):
-    return flask.make_response(six.text_type(data))
-
 
 @ns.route('/')
 class healthcheck(Resource):
-    representations = {
-        'text/plain': text,
-    }
 
-    @api.doc(responses={
-        200: 'Success',
-    })
     def get(self):
-        app.logger.info('[API] Healthcheck')
-        return checklist()
+        msg, status = checklist()
+        app.logger.info('[API] {} GET Healthcheck: {}'.format(status, msg))
+        return msg, status
 
 
 def checklist():
-    fails = []
-
-    if not _is_db_ok():
-        fails.append('db_fail')
-
-    msg = ':'.join(fails) or "OK"
-
-    return Response(json.dumps(msg), mimetype="text/plain", status=200)
+    msg, status = _is_db_ok()
+    return msg, status
 
 
 def _is_db_ok():
+    msg = 'ok'
+
     try:
         engine = create_engine(app.config['SQLALCHEMY_DATABASE_URI'])
     except Exception as e:
-        # logger.error('Failed to create_engine: {}'.format(e))
-        return False
+        msg = 'Failed to create_engine: {}'.format(str(e))
+        return msg, 500
 
     try:
         _ = engine.execute('SELECT 1+1 FROM dual')
     except Exception as e:
-        # logger.error('Failed to healthcheck db: {}'.format(e))
-        return False
+        msg = 'Failed to healthcheck db: {}'.format(e)
+        return msg, 500
 
-    return True
+    return msg, 200

@@ -47,13 +47,15 @@ class Expirer(Resource):
             obj=obj,
             date=date
         )
-        app.logger.info('[API] POST Expirer: {}'.format({
+        msg, status = expired_object.save()
+
+        app.logger.info('[API] {} POST Expirer: {}'.format(status, {
             'account': account,
             'container': container,
             'obj': obj,
             'date': date
         }))
-        return expired_object.save()
+        return msg, status
 
     @is_authenticated
     def delete(self):
@@ -73,13 +75,14 @@ class Expirer(Resource):
 
         expired_object = ExpiredObject.find_expired_object(account, container, obj)
 
-        app.logger.info('[API] DELETE Expirer: {}'.format({
+        if not expired_object:
+            msg, status = 'Not found', 404
+        else:
+            msg, status = expired_object.delete()
+
+        app.logger.info('[API] {} DELETE Expirer: {}'.format(status, {
             'account': account,
             'container': container,
             'obj': obj
         }))
-
-        if not expired_object:
-            return 'Not found', 404
-        else:
-            return expired_object.delete()
+        return msg, status
