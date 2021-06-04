@@ -47,7 +47,12 @@ class Expirer(Resource):
             obj=obj,
             date=date
         )
-        # app.logger.debug('Receive Data: %s', data)
+        app.logger.info('[API] POST Expirer: {}'.format({
+            'account': account,
+            'container': container,
+            'obj': obj,
+            'date': date
+        }))
         return expired_object.save()
 
     @is_authenticated
@@ -67,6 +72,12 @@ class Expirer(Resource):
             return "Incorrect parameters", 422
 
         expired_object = ExpiredObject.find_expired_object(account, container, obj)
+
+        app.logger.info('[API] DELETE Expirer: {}'.format({
+            'account': account,
+            'container': container,
+            'obj': obj
+        }))
 
         if not expired_object:
             return 'Not found', 404

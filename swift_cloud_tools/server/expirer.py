@@ -57,7 +57,7 @@ async def work():
             if res[1] == 200:
                 blob.delete()
 
-        print("Task Executed")
+        app.logger.info('[SERVICE] Expire Task Executed')
         await asyncio.sleep(int(os.environ.get("EXPIRY_TIME", '3600')))
 
 

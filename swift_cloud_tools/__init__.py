@@ -1,13 +1,17 @@
-from os import environ
+# encoding: utf-8
+import logging
 
+from os import environ
 from flask import Flask
 from flask_cors import CORS
 from flask_migrate import Migrate
+from logging.handlers import RotatingFileHandler
+
+from swift_cloud_tools.models import db
+from swift_cloud_tools.api.v1.api import blueprint as api_v1
 
 
 def create_app(config_module=None):
-    from swift_cloud_tools.models import db
-
     app = Flask(__name__)
     app.secret_key = environ.get('SECRET_KEY')
     if config_module:
@@ -23,8 +27,15 @@ def create_app(config_module=None):
 
     CORS(app, resources={r"/v1/*": {"origins": "*"}})
 
-    from swift_cloud_tools.api.v1.api import blueprint as api_v1
     app.register_blueprint(api_v1)
+
+    handler = RotatingFileHandler('swift-cloud-tools.log', maxBytes=10000, backupCount=1)
+    handler.setLevel(logging.DEBUG)
+    logging.basicConfig(
+        level=logging.DEBUG,
+        format='%(asctime)s %(threadName)s %(levelname)s %(message)s'
+    )
+    app.logger.addHandler(handler)
 
     return app
 

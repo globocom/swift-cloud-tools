@@ -27,6 +27,7 @@ class healthcheck(Resource):
         200: 'Success',
     })
     def get(self):
+        app.logger.info('[API] Healthcheck')
         return checklist()
 
 
