@@ -31,25 +31,28 @@ async def work():
     ctx.push()
 
     while True:
+        app.logger.info('[SERVICE] Expire task started')
+
         if not client:
             client = _get_client()
 
         current_time = datetime.now()
-
         raws = ExpiredObject.query.filter(ExpiredObject.date <= current_time).all()
 
         for raw in raws:
             bucket = client.get_bucket(raw.account)
 
             if not bucket or not bucket.exists():
-                print('404')
+                app.logger.info('[SERVICE] Bucket not exists: {}'.format(bucket.name))
+                raw.delete()
                 continue
 
             obj_path = "{}/{}".format(raw.container, raw.obj)
             blob = bucket.get_blob(obj_path)
 
             if not blob or not blob.exists():
-                print('404')
+                app.logger.info('[SERVICE] Blob not exists: {}'.format(blob.name))
+                raw.delete()
                 continue
 
             res = raw.delete()
@@ -57,7 +60,7 @@ async def work():
             if res[1] == 200:
                 blob.delete()
 
-        app.logger.info('[SERVICE] Expire Task Executed')
+        app.logger.info('[SERVICE] Expire task executed')
         await asyncio.sleep(int(os.environ.get("EXPIRY_TIME", '3600')))
 
 
@@ -70,5 +73,5 @@ if __name__ == '__main__':
     except KeyboardInterrupt:
         pass
     finally:
-        print("Closing Loop")
+        app.logger.info('[SERVICE] Closing loop')
         loop.close()
