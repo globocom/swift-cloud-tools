@@ -41,26 +41,29 @@ async def work():
 
         for raw in raws:
             bucket = client.get_bucket(raw.account)
+            obj_path = "{}/{}".format(raw.container, raw.obj)
 
             if not bucket or not bucket.exists():
-                app.logger.info('[SERVICE] Bucket not exists: {}'.format(bucket.name))
+                app.logger.info('[SERVICE] Bucket not exists: {}'.format(raw.account))
+                app.logger.info('[SERVICE] Object removed from database only: {}/{}'.format(raw.account, obj_path))
                 raw.delete()
                 continue
 
-            obj_path = "{}/{}".format(raw.container, raw.obj)
             blob = bucket.get_blob(obj_path)
 
             if not blob or not blob.exists():
-                app.logger.info('[SERVICE] Blob not exists: {}'.format(blob.name))
+                app.logger.info('[SERVICE] Blob not exists: {}'.format(obj_path))
+                app.logger.info('[SERVICE] Object removed from database only: {}/{}'.format(raw.account, obj_path))
                 raw.delete()
                 continue
 
             res = raw.delete()
 
             if res[1] == 200:
+                app.logger.info('[SERVICE] Object removed: {}/{}'.format(raw.account, obj_path))
                 blob.delete()
 
-        app.logger.info('[SERVICE] Expire task executed')
+        app.logger.info('[SERVICE] Expire task completed')
         await asyncio.sleep(int(os.environ.get("EXPIRY_TIME", '3600')))
 
 
