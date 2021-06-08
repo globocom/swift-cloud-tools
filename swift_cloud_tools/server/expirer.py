@@ -65,9 +65,8 @@ async def work():
                 blob.delete()
 
         app.logger.info('[SERVICE] Expire task completed')
-
-        zbx_passive.send()
         app.logger.info('[SERVICE] Sending passive monitoring to zabbix')
+        zbx_passive.send()
 
         await asyncio.sleep(int(os.environ.get("EXPIRY_TIME", '3600')))
 
