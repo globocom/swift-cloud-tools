@@ -8,6 +8,7 @@ from google.oauth2 import service_account
 from datetime import datetime
 
 from swift_cloud_tools.models import ExpiredObject
+from swift_cloud_tools.server import zbx_passive
 from swift_cloud_tools import create_app
 
 
@@ -64,6 +65,10 @@ async def work():
                 blob.delete()
 
         app.logger.info('[SERVICE] Expire task completed')
+
+        zbx_passive.send()
+        app.logger.info('[SERVICE] Sending passive monitoring to zabbix')
+
         await asyncio.sleep(int(os.environ.get("EXPIRY_TIME", '3600')))
 
 
