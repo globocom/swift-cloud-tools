@@ -1,23 +1,17 @@
+# -*- coding: utf-8 -*-
 import requests
-import json
 
-from flask import Flask
 from flask_testing import LiveServerTestCase
+
+from swift_cloud_tools import create_app as create_app_orig
 
 
 class Healthcheck(LiveServerTestCase):
 
     def create_app(self):
-        app = Flask(__name__)
-        app.config['TESTING'] = True
-        app.config['LIVESERVER_PORT'] = 8943
-        app.config['LIVESERVER_TIMEOUT'] = 10
-        return app
+        return create_app_orig(config_module='config/testing_config.py')
 
-    def setUp(self):
-        self.host = 'http://0.0.0.0:5000'
-
-    def test_flask_application_is_up_and_running(self):
-        response = requests.get('{}/v1/healthcheck/'.format(self.host))
+    def test_get_healthcheck_ok(self):
+        response = requests.get('{}/v1/healthcheck/'.format(self.get_server_url()))
 
         self.assertEqual(response.status_code, 200)

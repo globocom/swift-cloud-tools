@@ -23,7 +23,7 @@ class Expirer(Resource):
         params = request.get_json()
 
         if not params:
-            return "Incorrect parameters", 422
+            return "incorrect parameters", 422
 
         account = params.get('account')
         container = params.get('container')
@@ -31,15 +31,15 @@ class Expirer(Resource):
         date = params.get('date')
 
         if not account or not container or not obj or not date:
-            return "Incorrect parameters", 422
+            return "incorrect parameters", 422
 
         if len(date) == 19:
             try:
                 date_obj = datetime.strptime(date, "%Y-%m-%d %H:%M:%S")
             except ValueError:
-                return "Invalid date format: YYYY-MM-DD HH:MM:SS", 422
+                return "invalid date format: YYYY-MM-DD HH:MM:SS", 422
         else:
-            return "Invalid date format: YYYY-MM-DD HH:MM:SS", 422
+            return "invalid date format: YYYY-MM-DD HH:MM:SS", 422
 
         expired_object = ExpiredObject(
             account=account,
@@ -64,19 +64,19 @@ class Expirer(Resource):
         params = request.get_json()
 
         if not params:
-            return "Incorrect parameters", 422
+            return "incorrect parameters", 422
 
         account = params.get('account')
         container = params.get('container')
         obj = params.get('object')
 
         if not account or not container or not obj:
-            return "Incorrect parameters", 422
+            return "incorrect parameters", 422
 
         expired_object = ExpiredObject.find_expired_object(account, container, obj)
 
         if not expired_object:
-            msg, status = 'Not found', 404
+            msg, status = 'not found', 404
         else:
             msg, status = expired_object.delete()
 

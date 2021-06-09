@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 import unittest
 
 from swift_cloud_tools import create_app
