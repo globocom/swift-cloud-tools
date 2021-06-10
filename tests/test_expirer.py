@@ -1,163 +1,208 @@
-# -*- coding: utf-8 -*-
-import requests
-import flask_migrate
-import json
+# -- coding: utf-8 --
+from webob import Request
+from tests.database_testcase import DatabaseTestCase
 
-from flask_testing import LiveServerTestCase
-
-from swift_cloud_tools import create_app as create_app_orig
-from tests.utils import Utils
+from swift_cloud_tools.middleware import SwiftCloudToolsKeystoneMiddleware
+from swift_cloud_tools.models import ExpiredObject, db
 
 
-class Expirer(LiveServerTestCase):
+class SwiftCloudToolsKeystoneMiddlewareTest(DatabaseTestCase):
 
-    def create_app(self):
-        self.headers = {'Content-type': 'application/json'}
-        return create_app_orig(config_module='config/testing_config.py')
+    @classmethod
+    def setUpClass(cls):
+        super(SwiftCloudToolsKeystoneMiddlewareTest, cls).setUpClass()
+        cls.environ = {'REQUEST_METHOD': 'GET',
+                       'HTTP_X_IDENTITY_STATUS': 'Confirmed',
+                       'HTTP_X_SERVICE_IDENTITY_STATUS': 'Confirmed',
+                       'HTTP_X_USER_NAME': 'u_testproject',
+                       'HTTP_X_TENANT_NAME': 'testproject',
+                       'HTTP_X_TENANT_ID': '12345'}
+        cls.app.wsgi_app = SwiftCloudToolsKeystoneMiddleware(cls.app.wsgi_app, {})
+        cls.app.testing = False
+
+    @classmethod
+    def tearDownClass(cls):
+        super(SwiftCloudToolsKeystoneMiddlewareTest, cls).tearDownClass()
+        cls.app.testing = True
 
     def setUp(self):
-        flask_migrate.upgrade()
-        self.utils = Utils(self.get_server_url())
+        ExpiredObject(account='auth_test',container='test',obj='test.jpg',date='2021-06-01 12:15:00').save()
 
     def tearDown(self):
-        flask_migrate.downgrade()
+        ExpiredObject.query.delete()
 
-    def test_post_expirer(self):
+    def test_middleware_get_healthcheck(self):
+        env = {}
+        resp = Request.blank('/v1/healthcheck/', environ=env).get_response(self.app)
+
+        self.assertEqual(resp.status_code, 200)
+
+    def test_middleware_post_expirer_with_unconfirmed_identity_returns_401(self):
+        env = self.environ.copy()
+        env.update({
+            'HTTP_X_IDENTITY_STATUS': None,
+            'HTTP_X_SERVICE_IDENTITY_STATUS': None,
+            'REQUEST_METHOD': 'POST',
+        })
+        resp = Request.blank('/v1/expirer/', environ=env).get_response(self.app)
+
+        self.assertEqual(resp.status_code, 401)
+        self.assertEqual(resp.body, b'Unauthenticated')
+
+    def test_middleware_post_expirer_with_allowed_identity(self):
+        env = self.environ.copy()
+        env.update({
+            'REQUEST_METHOD': 'POST'
+        })
         data = {
-            "account": "auth_792079638c6441bca02071501f4eb273",
-            "container": "test",
-            "object": "test.jpeg",
-            "date": "2021-06-01 12:15:00"
+            'account': 'auth_test1',
+            'container': 'test1',
+            'object': 'test1.jpg',
+            'date': '2021-06-01 12:15:00'
         }
-        response = requests.post(
-            '{}/v1/expirer/'.format(
-                self.get_server_url()
-            ), data=json.dumps(data), headers=self.headers
-        )
-        content = json.loads(response.content)
+        resp = Request.blank('/v1/expirer/', environ=env, json=data).get_response(self.app)
 
-        self.assertEqual(response.status_code, 200)
-        self.assertEqual('ok', content)
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp.body, b'ok')
 
-    def test_post_expirer_empty_params(self):
+    def test_middleware_post_expirer_with_allowed_identity_duplicate_entry(self):
+        env = self.environ.copy()
+        env.update({
+            'REQUEST_METHOD': 'POST'
+        })
+        data = {
+            'account': 'auth_test',
+            'container': 'test',
+            'object': 'test.jpg',
+            'date': '2021-06-01 12:15:00'
+        }
+        resp = Request.blank('/v1/expirer/', environ=env, json=data).get_response(self.app)
+        db.session.rollback()
+
+        self.assertEqual(resp.status_code, 409)
+        self.assertEqual(resp.body, b'Duplicate entry')
+
+    def test_middleware_post_expirer_with_allowed_identity_empty_params(self):
+        env = self.environ.copy()
+        env.update({
+            'REQUEST_METHOD': 'POST'
+        })
         data = {}
-        response = requests.post(
-            '{}/v1/expirer/'.format(
-                self.get_server_url()
-            ), data=json.dumps(data), headers=self.headers
-        )
-        content = json.loads(response.content)
+        resp = Request.blank('/v1/expirer/', environ=env, json=data).get_response(self.app)
 
-        self.assertEqual(response.status_code, 422)
-        self.assertEqual('incorrect parameters', content)
+        self.assertEqual(resp.status_code, 422)
+        self.assertEqual(resp.body, b'incorrect parameters')
 
-    def test_post_expirer_without_date(self):
+    def test_middleware_post_expirer_with_allowed_identity_without_date(self):
+        env = self.environ.copy()
+        env.update({
+            'REQUEST_METHOD': 'POST'
+        })
         data = {
-            "account": "auth_792079638c6441bca02071501f4eb273",
-            "container": "test",
-            "object": "test.jpeg"
+            'account': 'auth_test1',
+            'container': 'test1',
+            'object': 'test1.jpg'
         }
-        response = requests.post(
-            '{}/v1/expirer/'.format(
-                self.get_server_url()
-            ), data=json.dumps(data), headers=self.headers
-        )
-        content = json.loads(response.content)
+        resp = Request.blank('/v1/expirer/', environ=env, json=data).get_response(self.app)
 
-        self.assertEqual(response.status_code, 422)
-        self.assertEqual('incorrect parameters', content)
+        self.assertEqual(resp.status_code, 422)
+        self.assertEqual(resp.body, b'incorrect parameters')
 
-    def test_post_expirer_short_date(self):
+    def test_middleware_post_expirer_with_allowed_identity_short_date(self):
+        env = self.environ.copy()
+        env.update({
+            'REQUEST_METHOD': 'POST'
+        })
         data = {
-            "account": "auth_792079638c6441bca02071501f4eb273",
-            "container": "test",
-            "object": "test.jpeg",
-            "date": "2021-06-01"
+            'account': 'auth_test1',
+            'container': 'test1',
+            'object': 'test1.jpg',
+            'date': '2021-06-01'
         }
-        response = requests.post(
-            '{}/v1/expirer/'.format(
-                self.get_server_url()
-            ), data=json.dumps(data), headers=self.headers
-        )
-        content = json.loads(response.content)
+        resp = Request.blank('/v1/expirer/', environ=env, json=data).get_response(self.app)
 
-        self.assertEqual(response.status_code, 422)
-        self.assertEqual('invalid date format: YYYY-MM-DD HH:MM:SS', content)
+        self.assertEqual(resp.status_code, 422)
+        self.assertEqual(resp.body, b'invalid date format: YYYY-MM-DD HH:MM:SS')
 
-    def test_post_expirer_wrong_date(self):
+    def test_middleware_post_expirer_with_allowed_identity_wrong_date(self):
+        env = self.environ.copy()
+        env.update({
+            'REQUEST_METHOD': 'POST'
+        })
         data = {
-            "account": "auth_792079638c6441bca02071501f4eb273",
-            "container": "test",
-            "object": "test.jpeg",
-            "date": "2021-06-01T12:15:00"
+            'account': 'auth_test1',
+            'container': 'test1',
+            'object': 'test1.jpg',
+            'date': '2021-06-01T12:15:00'
         }
-        response = requests.post(
-            '{}/v1/expirer/'.format(
-                self.get_server_url()
-            ), data=json.dumps(data), headers=self.headers
-        )
-        content = json.loads(response.content)
+        resp = Request.blank('/v1/expirer/', environ=env, json=data).get_response(self.app)
 
-        self.assertEqual(response.status_code, 422)
-        self.assertEqual('invalid date format: YYYY-MM-DD HH:MM:SS', content)
+        self.assertEqual(resp.status_code, 422)
+        self.assertEqual(resp.body, b'invalid date format: YYYY-MM-DD HH:MM:SS')
 
-    def test_delete_expirer(self):
-        self.utils.insert_expirer()
+    def test_middleware_delete_expirer_with_unconfirmed_identity_returns_401(self):
+        env = self.environ.copy()
+        env.update({
+            'HTTP_X_IDENTITY_STATUS': None,
+            'HTTP_X_SERVICE_IDENTITY_STATUS': None,
+            'REQUEST_METHOD': 'DELETE',
+        })
+        resp = Request.blank('/v1/expirer/', environ=env).get_response(self.app)
 
+        self.assertEqual(resp.status_code, 401)
+        self.assertEqual(resp.body, b'Unauthenticated')
+
+    def test_middleware_delete_expirer_with_allowed_identity(self):
+        env = self.environ.copy()
+        env.update({
+            'REQUEST_METHOD': 'DELETE'
+        })
         data = {
-            "account": "auth_792079638c6441bca02071501f4eb273",
-            "container": "test",
-            "object": "test.jpeg"
+            'account': 'auth_test',
+            'container': 'test',
+            'object': 'test.jpg'
         }
-        response = requests.delete(
-            '{}/v1/expirer/'.format(
-                self.get_server_url()
-            ), data=json.dumps(data), headers=self.headers
-        )
-        content = json.loads(response.content)
+        resp = Request.blank('/v1/expirer/', environ=env, json=data).get_response(self.app)
 
-        self.assertEqual(response.status_code, 200)
-        self.assertEqual('ok', content)
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp.body, b'ok')
 
-    def test_delete_expirer_empty_params(self):
+    def test_middleware_delete_expirer_with_allowed_identity_empty_params(self):
+        env = self.environ.copy()
+        env.update({
+            'REQUEST_METHOD': 'DELETE'
+        })
         data = {}
-        response = requests.delete(
-            '{}/v1/expirer/'.format(
-                self.get_server_url()
-            ), data=json.dumps(data), headers=self.headers
-        )
-        content = json.loads(response.content)
+        resp = Request.blank('/v1/expirer/', environ=env, json=data).get_response(self.app)
 
-        self.assertEqual(response.status_code, 422)
-        self.assertEqual('incorrect parameters', content)
+        self.assertEqual(resp.status_code, 422)
+        self.assertEqual(resp.body, b'incorrect parameters')
 
-    def test_delete_expirer_without_object(self):
+    def test_middleware_delete_expirer_with_allowed_identity_without_object(self):
+        env = self.environ.copy()
+        env.update({
+            'REQUEST_METHOD': 'DELETE'
+        })
         data = {
-            "account": "auth_792079638c6441bca02071501f4eb273",
-            "container": "test"
+            'account': 'auth_test',
+            'container': 'test'
         }
-        response = requests.delete(
-            '{}/v1/expirer/'.format(
-                self.get_server_url()
-            ), data=json.dumps(data), headers=self.headers
-        )
-        content = json.loads(response.content)
+        resp = Request.blank('/v1/expirer/', environ=env, json=data).get_response(self.app)
 
-        self.assertEqual(response.status_code, 422)
-        self.assertEqual('incorrect parameters', content)
+        self.assertEqual(resp.status_code, 422)
+        self.assertEqual(resp.body, b'incorrect parameters')
 
-    def test_delete_expirer_not_found(self):
+    def test_middleware_delete_expirer_with_allowed_identity_not_found(self):
+        env = self.environ.copy()
+        env.update({
+            'REQUEST_METHOD': 'DELETE'
+        })
         data = {
-            "account": "auth_792079638c6441bca02071501f4eb273",
-            "container": "test",
-            "object": "test.jpeg"
+            'account': 'auth_test',
+            'container': 'test',
+            'object': 'test.gif'
         }
-        response = requests.delete(
-            '{}/v1/expirer/'.format(
-                self.get_server_url()
-            ), data=json.dumps(data), headers=self.headers
-        )
-        content = json.loads(response.content)
+        resp = Request.blank('/v1/expirer/', environ=env, json=data).get_response(self.app)
 
-        self.assertEqual(response.status_code, 404)
-        self.assertEqual('not found', content)
+        self.assertEqual(resp.status_code, 404)
+        self.assertEqual(resp.body, b'not found')

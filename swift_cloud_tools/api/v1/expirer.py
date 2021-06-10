@@ -2,7 +2,7 @@
 import json
 
 from datetime import datetime
-from flask import request
+from flask import request, Response
 from flask_restplus import Resource
 from flask import current_app as app
 
@@ -22,8 +22,12 @@ class Expirer(Resource):
 
         params = request.get_json()
 
+        if not params and request.data:
+            params = json.loads(request.data)
+
         if not params:
-            return "incorrect parameters", 422
+            msg = 'incorrect parameters'
+            return Response(msg, mimetype="text/plain", status=422)
 
         account = params.get('account')
         container = params.get('container')
@@ -31,15 +35,18 @@ class Expirer(Resource):
         date = params.get('date')
 
         if not account or not container or not obj or not date:
-            return "incorrect parameters", 422
+            msg = 'incorrect parameters'
+            return Response(msg, mimetype="text/plain", status=422)
 
         if len(date) == 19:
             try:
                 date_obj = datetime.strptime(date, "%Y-%m-%d %H:%M:%S")
             except ValueError:
-                return "invalid date format: YYYY-MM-DD HH:MM:SS", 422
+                msg = 'invalid date format: YYYY-MM-DD HH:MM:SS'
+                return Response(msg, mimetype="text/plain", status=422)
         else:
-            return "invalid date format: YYYY-MM-DD HH:MM:SS", 422
+            msg = 'invalid date format: YYYY-MM-DD HH:MM:SS'
+            return Response(msg, mimetype="text/plain", status=422)
 
         expired_object = ExpiredObject(
             account=account,
@@ -55,7 +62,7 @@ class Expirer(Resource):
             'obj': obj,
             'date': date
         }))
-        return msg, status
+        return Response(msg, mimetype="text/plain", status=status)
 
     @is_authenticated
     def delete(self):
@@ -63,15 +70,20 @@ class Expirer(Resource):
 
         params = request.get_json()
 
+        if not params and request.data:
+            params = json.loads(request.data)
+
         if not params:
-            return "incorrect parameters", 422
+            msg = 'incorrect parameters'
+            return Response(msg, mimetype="text/plain", status=422)
 
         account = params.get('account')
         container = params.get('container')
         obj = params.get('object')
 
         if not account or not container or not obj:
-            return "incorrect parameters", 422
+            msg = 'incorrect parameters'
+            return Response(msg, mimetype="text/plain", status=422)
 
         expired_object = ExpiredObject.find_expired_object(account, container, obj)
 
@@ -85,4 +97,4 @@ class Expirer(Resource):
             'container': container,
             'obj': obj
         }))
-        return msg, status
+        return Response(msg, mimetype="text/plain", status=status)
