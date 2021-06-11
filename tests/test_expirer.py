@@ -11,6 +11,7 @@ class SwiftCloudToolsKeystoneMiddlewareTest(DatabaseTestCase):
     @classmethod
     def setUpClass(cls):
         super(SwiftCloudToolsKeystoneMiddlewareTest, cls).setUpClass()
+        cls.headers = {'X-Auth-Token': cls.app.config.get('API_KEY')}
         cls.environ = {'REQUEST_METHOD': 'GET',
                        'HTTP_X_IDENTITY_STATUS': 'Confirmed',
                        'HTTP_X_SERVICE_IDENTITY_STATUS': 'Confirmed',
@@ -26,7 +27,12 @@ class SwiftCloudToolsKeystoneMiddlewareTest(DatabaseTestCase):
         cls.app.testing = True
 
     def setUp(self):
-        ExpiredObject(account='auth_test',container='test',obj='test.jpg',date='2021-06-01 12:15:00').save()
+        ExpiredObject(
+            account='auth_test',
+            container='test',
+            obj='test.jpg',
+            date='2021-06-01 12:15:00'
+        ).save()
 
     def tearDown(self):
         ExpiredObject.query.delete()
@@ -60,7 +66,12 @@ class SwiftCloudToolsKeystoneMiddlewareTest(DatabaseTestCase):
             'object': 'test1.jpg',
             'date': '2021-06-01 12:15:00'
         }
-        resp = Request.blank('/v1/expirer/', environ=env, json=data).get_response(self.app)
+        resp = Request.blank(
+            '/v1/expirer/',
+            environ=env,
+            json=data,
+            headers=self.headers
+        ).get_response(self.app)
 
         self.assertEqual(resp.status_code, 200)
         self.assertEqual(resp.body, b'ok')
@@ -76,7 +87,12 @@ class SwiftCloudToolsKeystoneMiddlewareTest(DatabaseTestCase):
             'object': 'test.jpg',
             'date': '2021-06-01 12:15:00'
         }
-        resp = Request.blank('/v1/expirer/', environ=env, json=data).get_response(self.app)
+        resp = Request.blank(
+            '/v1/expirer/',
+            environ=env,
+            json=data,
+            headers=self.headers
+        ).get_response(self.app)
         db.session.rollback()
 
         self.assertEqual(resp.status_code, 409)
@@ -88,7 +104,12 @@ class SwiftCloudToolsKeystoneMiddlewareTest(DatabaseTestCase):
             'REQUEST_METHOD': 'POST'
         })
         data = {}
-        resp = Request.blank('/v1/expirer/', environ=env, json=data).get_response(self.app)
+        resp = Request.blank(
+            '/v1/expirer/',
+            environ=env,
+            json=data,
+            headers=self.headers
+        ).get_response(self.app)
 
         self.assertEqual(resp.status_code, 422)
         self.assertEqual(resp.body, b'incorrect parameters')
@@ -103,7 +124,12 @@ class SwiftCloudToolsKeystoneMiddlewareTest(DatabaseTestCase):
             'container': 'test1',
             'object': 'test1.jpg'
         }
-        resp = Request.blank('/v1/expirer/', environ=env, json=data).get_response(self.app)
+        resp = Request.blank(
+            '/v1/expirer/',
+            environ=env,
+            json=data,
+            headers=self.headers
+        ).get_response(self.app)
 
         self.assertEqual(resp.status_code, 422)
         self.assertEqual(resp.body, b'incorrect parameters')
@@ -119,7 +145,12 @@ class SwiftCloudToolsKeystoneMiddlewareTest(DatabaseTestCase):
             'object': 'test1.jpg',
             'date': '2021-06-01'
         }
-        resp = Request.blank('/v1/expirer/', environ=env, json=data).get_response(self.app)
+        resp = Request.blank(
+            '/v1/expirer/',
+            environ=env,
+            json=data,
+            headers=self.headers
+        ).get_response(self.app)
 
         self.assertEqual(resp.status_code, 422)
         self.assertEqual(resp.body, b'invalid date format: YYYY-MM-DD HH:MM:SS')
@@ -135,7 +166,12 @@ class SwiftCloudToolsKeystoneMiddlewareTest(DatabaseTestCase):
             'object': 'test1.jpg',
             'date': '2021-06-01T12:15:00'
         }
-        resp = Request.blank('/v1/expirer/', environ=env, json=data).get_response(self.app)
+        resp = Request.blank(
+            '/v1/expirer/',
+            environ=env,
+            json=data,
+            headers=self.headers
+        ).get_response(self.app)
 
         self.assertEqual(resp.status_code, 422)
         self.assertEqual(resp.body, b'invalid date format: YYYY-MM-DD HH:MM:SS')
@@ -147,7 +183,10 @@ class SwiftCloudToolsKeystoneMiddlewareTest(DatabaseTestCase):
             'HTTP_X_SERVICE_IDENTITY_STATUS': None,
             'REQUEST_METHOD': 'DELETE',
         })
-        resp = Request.blank('/v1/expirer/', environ=env).get_response(self.app)
+        resp = Request.blank(
+            '/v1/expirer/',
+            environ=env
+        ).get_response(self.app)
 
         self.assertEqual(resp.status_code, 401)
         self.assertEqual(resp.body, b'Unauthenticated')
@@ -162,7 +201,12 @@ class SwiftCloudToolsKeystoneMiddlewareTest(DatabaseTestCase):
             'container': 'test',
             'object': 'test.jpg'
         }
-        resp = Request.blank('/v1/expirer/', environ=env, json=data).get_response(self.app)
+        resp = Request.blank(
+            '/v1/expirer/',
+            environ=env,
+            json=data,
+            headers=self.headers
+        ).get_response(self.app)
 
         self.assertEqual(resp.status_code, 200)
         self.assertEqual(resp.body, b'ok')
@@ -173,7 +217,12 @@ class SwiftCloudToolsKeystoneMiddlewareTest(DatabaseTestCase):
             'REQUEST_METHOD': 'DELETE'
         })
         data = {}
-        resp = Request.blank('/v1/expirer/', environ=env, json=data).get_response(self.app)
+        resp = Request.blank(
+            '/v1/expirer/',
+            environ=env,
+            json=data,
+            headers=self.headers
+        ).get_response(self.app)
 
         self.assertEqual(resp.status_code, 422)
         self.assertEqual(resp.body, b'incorrect parameters')
@@ -187,7 +236,12 @@ class SwiftCloudToolsKeystoneMiddlewareTest(DatabaseTestCase):
             'account': 'auth_test',
             'container': 'test'
         }
-        resp = Request.blank('/v1/expirer/', environ=env, json=data).get_response(self.app)
+        resp = Request.blank(
+            '/v1/expirer/',
+            environ=env,
+            json=data,
+            headers=self.headers
+        ).get_response(self.app)
 
         self.assertEqual(resp.status_code, 422)
         self.assertEqual(resp.body, b'incorrect parameters')
@@ -202,7 +256,12 @@ class SwiftCloudToolsKeystoneMiddlewareTest(DatabaseTestCase):
             'container': 'test',
             'object': 'test.gif'
         }
-        resp = Request.blank('/v1/expirer/', environ=env, json=data).get_response(self.app)
+        resp = Request.blank(
+            '/v1/expirer/',
+            environ=env,
+            json=data,
+            headers=self.headers
+        ).get_response(self.app)
 
         self.assertEqual(resp.status_code, 404)
         self.assertEqual(resp.body, b'not found')

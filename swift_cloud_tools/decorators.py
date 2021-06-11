@@ -13,8 +13,10 @@ def is_authenticated(f):
         if app.testing:
             return f(*args, **kwargs)
 
-        if (request.environ.get('HTTP_X_IDENTITY_STATUS') != 'Confirmed' or request.environ.get(
-                'HTTP_X_SERVICE_IDENTITY_STATUS') not in (None, 'Confirmed')):
+        if not request.headers.get('x-auth-token'):
+            return Response('Unauthenticated', status=401)
+
+        if request.headers.get('x-auth-token') != app.config.get('API_KEY'):
             return Response('Unauthenticated', status=401)
 
         return f(*args, **kwargs)
