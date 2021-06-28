@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 from flask_sqlalchemy import SQLAlchemy
 from sqlalchemy import func
+from datetime import datetime
 
 db = SQLAlchemy()
 
@@ -66,3 +67,17 @@ class ExpiredObject(db.Model, SaveDeleteModel):
             return expired_object.first()
         else:
             return None
+
+
+class TransferObject(db.Model, SaveDeleteModel):
+    id = db.Column(db.Integer, primary_key=True)
+    project_id = db.Column(db.String(64), nullable=False)
+    project_name = db.Column(db.String(64), nullable=False)
+    initial_date = db.Column(db.DateTime, default=datetime.utcnow, nullable=True)
+    final_date = db.Column(db.DateTime, nullable=True)
+
+    def __init__(self, project_id=None, project_name=None, initial_date=None, final_date=None):
+        self.project_id = project_id
+        self.project_name = project_name
+        self.initial_date = initial_date
+        self.final_date = final_date
