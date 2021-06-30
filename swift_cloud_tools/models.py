@@ -73,11 +73,18 @@ class TransferObject(db.Model, SaveDeleteModel):
     id = db.Column(db.Integer, primary_key=True)
     project_id = db.Column(db.String(64), nullable=False)
     project_name = db.Column(db.String(64), nullable=False)
-    initial_date = db.Column(db.DateTime, default=datetime.utcnow, nullable=True)
+    environment = db.Column(db.String(10), nullable=False)
+    object_count = db.Column(db.Integer, default=0, nullable=True)
+    bytes_used = db.Column(db.Integer, default=0, nullable=True)
+    initial_date = db.Column(db.DateTime, nullable=True)
     final_date = db.Column(db.DateTime, nullable=True)
 
-    def __init__(self, project_id=None, project_name=None, initial_date=None, final_date=None):
+    def __init__(self, project_id=None, project_name=None, environment=None,
+        object_count=None, bytes_used=None, initial_date=None, final_date=None):
         self.project_id = project_id
         self.project_name = project_name
+        self.environment = environment
+        self.object_count = object_count
+        self.bytes_used = bytes_used
         self.initial_date = initial_date
         self.final_date = final_date
