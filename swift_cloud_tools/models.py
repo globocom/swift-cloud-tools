@@ -3,27 +3,29 @@ from flask_sqlalchemy import SQLAlchemy
 from sqlalchemy import func
 from datetime import datetime
 
-db = SQLAlchemy()
+db = SQLAlchemy(session_options={'autocommit': True})
 
 
 class SaveDeleteModel():
 
     def save(self):
         try:
-            if self.id == None:
-                db.session.add(self)
-            db.session.commit()
-            return 'ok', 200
+            with db.session.begin():
+                if self.id == None:
+                    db.session.add(self)
+                db.session.commit()
+            return "ok", 200
         except Exception as e:
             if '1062' in str(e):
-                return 'Duplicate entry', 409
+                return "Duplicate entry", 409
             else:
-                return str(e.orig), 500
+                return str(e.args), 500
 
     def delete(self):
         try:
-            db.session.delete(self)
-            db.session.commit()
+            with db.session.begin():
+                db.session.delete(self)
+                db.session.commit()
             return 'ok', 200
         except Exception as e:
             if 'is not persisted' in str(e):
@@ -69,7 +71,7 @@ class ExpiredObject(db.Model, SaveDeleteModel):
             return None
 
 
-class TransferObject(db.Model, SaveDeleteModel):
+class TransferProject(db.Model, SaveDeleteModel):
     id = db.Column(db.Integer, primary_key=True)
     project_id = db.Column(db.String(64), nullable=False)
     project_name = db.Column(db.String(64), nullable=False)
@@ -88,3 +90,18 @@ class TransferObject(db.Model, SaveDeleteModel):
         self.bytes_used = bytes_used
         self.initial_date = initial_date
         self.final_date = final_date
+
+    def find_transfer_project(project_id):
+        transfer_project = TransferProject.query.filter(
+            func.lower(TransferProject.project_id)==project_id
+        )
+
+        if transfer_project.count() > 0:
+            return transfer_project.first()
+        else:
+            return None
+
+    def save(self):
+        SaveDeleteModel.save(self)
+
+        return "Transfer project ({}) created.\n".format(self), 201

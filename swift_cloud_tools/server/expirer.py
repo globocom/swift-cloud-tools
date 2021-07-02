@@ -1,32 +1,17 @@
 #!/usr/bin/python3
 import asyncio
-import json
 import os
 
-from google.cloud import storage
-from google.oauth2 import service_account
 from datetime import datetime
 
+from swift_cloud_tools.server.utils import get_gcp_client
 from swift_cloud_tools.models import ExpiredObject
 from swift_cloud_tools.server import zbx_passive
 from swift_cloud_tools import create_app
 
 
-def _get_credentials():
-    credentials = service_account.Credentials.from_service_account_info(
-        json.loads(os.environ.get("GCP_CREDENTIALS"))
-    )
-
-    return credentials.with_scopes(
-        ['https://www.googleapis.com/auth/cloud-platform']
-    )
-
-def _get_client():
-    credentials = _get_credentials()
-    return storage.Client(credentials=credentials)
-
 async def work():
-    client = _get_client()
+    client = get_gcp_client()
     app = create_app('config/{}_config.py'.format(os.environ.get("FLASK_CONFIG")))
     ctx = app.app_context()
     ctx.push()
@@ -35,7 +20,7 @@ async def work():
         app.logger.info('[SERVICE] Expire task started')
 
         if not client:
-            client = _get_client()
+            client = get_gcp_client()
 
         current_time = datetime.now()
         raws = ExpiredObject.query.filter(ExpiredObject.date <= current_time).all()

@@ -5,6 +5,6 @@ mock==2.0.0
 pytest==6.2.4
 pytest-cov==2.12.1
 Flask-Testing==0.8.1
-ipython==7.16.1
+ipython==7.17.0
 ipdb==0.13.9
 jedi==0.17.2

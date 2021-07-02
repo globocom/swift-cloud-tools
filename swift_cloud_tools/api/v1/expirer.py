@@ -7,7 +7,7 @@ from flask_restplus import Resource
 from flask import current_app as app
 
 from swift_cloud_tools.api.v1 import api
-from swift_cloud_tools.models import db, ExpiredObject
+from swift_cloud_tools.models import ExpiredObject
 from swift_cloud_tools.decorators import is_authenticated
 
 ns = api.namespace('expirer', description='Expirer')

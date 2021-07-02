@@ -3,7 +3,7 @@ import requests
 import json
 
 
-class Utils(object):
+class Utils(Object):
 
     def __init__(self, host):
         super(Utils, self).__init__()
