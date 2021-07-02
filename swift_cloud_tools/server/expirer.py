@@ -4,14 +4,15 @@ import os
 
 from datetime import datetime
 
-from swift_cloud_tools.server.utils import get_gcp_client
+from swift_cloud_tools.server.utils import Google
 from swift_cloud_tools.models import ExpiredObject
 from swift_cloud_tools.server import zbx_passive
 from swift_cloud_tools import create_app
 
 
 async def work():
-    client = get_gcp_client()
+    google = Google()
+    gcp_client = google.get_gcp_client()
     app = create_app('config/{}_config.py'.format(os.environ.get("FLASK_CONFIG")))
     ctx = app.app_context()
     ctx.push()
@@ -19,14 +20,14 @@ async def work():
     while True:
         app.logger.info('[SERVICE] Expire task started')
 
-        if not client:
-            client = get_gcp_client()
+        if not gcp_client:
+            gcp_client = google.get_gcp_client()
 
         current_time = datetime.now()
         raws = ExpiredObject.query.filter(ExpiredObject.date <= current_time).all()
 
         for raw in raws:
-            bucket = client.get_bucket(raw.account)
+            bucket = gcp_client.get_bucket(raw.account)
             obj_path = "{}/{}".format(raw.container, raw.obj)
 
             if not bucket or not bucket.exists():

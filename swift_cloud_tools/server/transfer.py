@@ -64,6 +64,8 @@ async def work():
             raw.initial_date = datetime.now()
             msg, status = raw.save()
 
+        app.logger.info('[SERVICE] Transfer task completed')
+
         await asyncio.sleep(int(os.environ.get("TRANSFER_TIME", '30')))
 
 
