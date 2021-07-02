@@ -19,7 +19,7 @@ async def work():
     threads = {}
 
     while True:
-        app.logger.info('[SERVICE] Expire task started')
+        app.logger.info('[SERVICE] Transfer task started')
         env = os.environ.get("ENVIRONMENT")
         workers = int(os.environ.get("WORKERS"))
 
@@ -64,7 +64,7 @@ async def work():
             raw.initial_date = datetime.now()
             msg, status = raw.save()
 
-        await asyncio.sleep(int(os.environ.get("EXPIRY_TIME", '30')))
+        await asyncio.sleep(int(os.environ.get("TRANSFER_TIME", '30')))
 
 
 if __name__ == '__main__':
