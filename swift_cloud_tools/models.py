@@ -10,11 +10,10 @@ class SaveDeleteModel():
 
     def save(self):
         try:
-            with db.session.begin():
-                if self.id == None:
-                    db.session.add(self)
-                db.session.commit()
-            return "ok", 200
+            if self.id == None:
+                db.session.add(self)
+            db.session.commit()
+            return "ok", 201
         except Exception as e:
             if '1062' in str(e):
                 return "Duplicate entry", 409
@@ -23,10 +22,9 @@ class SaveDeleteModel():
 
     def delete(self):
         try:
-            with db.session.begin():
-                db.session.delete(self)
-                db.session.commit()
-            return 'ok', 200
+            db.session.delete(self)
+            db.session.commit()
+            return 'ok', 201
         except Exception as e:
             if 'is not persisted' in str(e):
                 return 'Not found', 404
@@ -70,6 +68,26 @@ class ExpiredObject(db.Model, SaveDeleteModel):
         else:
             return None
 
+    def save(self):
+        db.session.begin()
+        msg, status = SaveDeleteModel.save(self)
+
+        if status == 201:
+            return "Expired object '{}/{}/{}' created".format(
+                self.account, self.container, self.obj), status
+
+        return msg, status
+
+    def delete(self):
+        db.session.begin()
+        msg, status = SaveDeleteModel.delete(self)
+
+        if status == 201:
+            return "Expired object '{}/{}/{}' deleted".format(
+                self.account, self.container, self.obj), status
+
+        return msg, status
+
 
 class TransferProject(db.Model, SaveDeleteModel):
     id = db.Column(db.Integer, primary_key=True)
@@ -102,6 +120,21 @@ class TransferProject(db.Model, SaveDeleteModel):
             return None
 
     def save(self):
-        SaveDeleteModel.save(self)
+        db.session.begin()
+        msg, status = SaveDeleteModel.save(self)
 
-        return "Transfer project ({}) created.\n".format(self), 201
+        if status == 201:
+            return "Transfer project '{}' environment '{}' created".format(
+                self.project_name, self.environment), status
+
+        return msg, status
+
+    def delete(self):
+        db.session.begin()
+        msg, status = SaveDeleteModel.delete(self)
+
+        if status == 201:
+            return "Transfer project '{}' environment '{}' deleted".format(
+                self.project_name, self.environment), status
+
+        return msg, status

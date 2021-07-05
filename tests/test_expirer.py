@@ -73,8 +73,10 @@ class SwiftCloudToolsKeystoneMiddlewareTest(DatabaseTestCase):
             headers=self.headers
         ).get_response(self.app)
 
-        self.assertEqual(resp.status_code, 200)
-        self.assertEqual(resp.body, b'ok')
+        self.assertEqual(resp.status_code, 201)
+        body = "Expired object '{}/{}/{}' created".format(
+            data.get('account'), data.get('container'), data.get('object'))
+        self.assertEqual(resp.body, body.encode('utf-8'))
 
     def test_middleware_post_expirer_with_allowed_identity_duplicate_entry(self):
         env = self.environ.copy()
@@ -208,8 +210,10 @@ class SwiftCloudToolsKeystoneMiddlewareTest(DatabaseTestCase):
             headers=self.headers
         ).get_response(self.app)
 
-        self.assertEqual(resp.status_code, 200)
-        self.assertEqual(resp.body, b'ok')
+        self.assertEqual(resp.status_code, 201)
+        body = "Expired object '{}/{}/{}' deleted".format(
+            data.get('account'), data.get('container'), data.get('object'))
+        self.assertEqual(resp.body, body.encode('utf-8'))
 
     def test_middleware_delete_expirer_with_allowed_identity_empty_params(self):
         env = self.environ.copy()
