@@ -7,19 +7,21 @@ import time
 
 from datetime import datetime
 
-from swift_cloud_tools import create_app
 from swift_cloud_tools.models import TransferProject
 from swift_cloud_tools.server.synchronize import SynchronizeProjects
+from swift_cloud_tools.server.zbx_passive import Zabbix
+from swift_cloud_tools import create_app
 
 
 async def work():
+    zabbix = Zabbix(os.environ.get("ZBX_PASSIVE_MONITOR_TRANSFER"))
     app = create_app('config/{}_config.py'.format(os.environ.get("FLASK_CONFIG")))
     ctx = app.app_context()
     ctx.push()
     threads = {}
 
     while True:
-        app.logger.info('[SERVICE] Transfer task started')
+        app.logger.info('[SERVICE][TRANSFER] Transfer task started')
         env = os.environ.get("ENVIRONMENT")
         workers = int(os.environ.get("WORKERS"))
 
@@ -38,16 +40,16 @@ async def work():
             TransferProject.final_date == None
         ).all()
 
-        app.logger.info('[SERVICE] running: {}'.format(running))
-        app.logger.info('[SERVICE] available: {}'.format(available))
-        app.logger.info('[SERVICE] queue: {}'.format(len(raws)))
-        app.logger.info('[SERVICE] threads: {}'.format(threads))
+        app.logger.info('[SERVICE][TRANSFER] running: {}'.format(running))
+        app.logger.info('[SERVICE][TRANSFER] available: {}'.format(available))
+        app.logger.info('[SERVICE][TRANSFER] queue: {}'.format(len(raws)))
+        app.logger.info('[SERVICE][TRANSFER] threads: {}'.format(threads))
 
         threads_copy = copy.copy(threads)
 
         for key in threads_copy.keys():
             thread = threads_copy[key]
-            app.logger.info('[SERVICE] name: {}, isAlive: {}'.format(thread.name, thread.isAlive()))
+            app.logger.info('[SERVICE][TRANSFER] name: {}, isAlive: {}'.format(thread.name, thread.isAlive()))
             if not thread.isAlive():
                 del threads[key]
                 transfer_object = TransferProject.find_transfer_project(key)
@@ -64,9 +66,11 @@ async def work():
             raw.initial_date = datetime.now()
             msg, status = raw.save()
 
-        app.logger.info('[SERVICE] Transfer task completed')
+        app.logger.info('[SERVICE][TRANSFER] Transfer task completed')
+        app.logger.info('[SERVICE][TRANSFER] Sending passive monitoring to zabbix')
+        zabbix.send()
 
-        await asyncio.sleep(int(os.environ.get("TRANSFER_TIME", '30')))
+        await asyncio.sleep(int(os.environ.get("TRANSFER_TIME", '600')))
 
 
 if __name__ == '__main__':
@@ -78,5 +82,5 @@ if __name__ == '__main__':
     except KeyboardInterrupt:
         pass
     finally:
-        app.logger.info('[SERVICE] Closing loop')
+        app.logger.info('[SERVICE][TRANSFER] Closing loop')
         loop.close()

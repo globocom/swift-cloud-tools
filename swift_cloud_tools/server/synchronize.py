@@ -42,11 +42,11 @@ class SynchronizeProjects():
         object_count = account_stat.get('x-account-object-count')
         bytes_used = account_stat.get('x-account-bytes-used')
 
-        self.app.logger.info('[API] =========================================')
-        self.app.logger.info('[API] Account: {}'.format(project_id))
-        self.app.logger.info('[API] container_count: {}'.format(container_count))
-        self.app.logger.info('[API] object_count: {}'.format(object_count))
-        self.app.logger.info('[API] bytes_used: {}'.format(bytes_used))
+        self.app.logger.info('[SERVICE][TRANSFER] =========================================')
+        self.app.logger.info('[SERVICE][TRANSFER] Account: {}'.format(project_id))
+        self.app.logger.info('[SERVICE][TRANSFER] container_count: {}'.format(container_count))
+        self.app.logger.info('[SERVICE][TRANSFER] object_count: {}'.format(object_count))
+        self.app.logger.info('[SERVICE][TRANSFER] bytes_used: {}'.format(bytes_used))
 
         if len(containers) > 0:
             gcp_client = google.get_gcp_client()
@@ -61,12 +61,12 @@ class SynchronizeProjects():
                 bucket.iam_configuration.uniform_bucket_level_access_enabled = False
                 bucket.patch()
             except Exception as err:
-                self.app.logger.info('[API] 500 GET Create bucket: {}'.format(err))
+                self.app.logger.info('[SERVICE][TRANSFER] 500 GET Create bucket: {}'.format(err))
                 return Response(err, mimetype="text/plain", status=500)
 
         for container in containers:
-            self.app.logger.info('[API] ----------')
-            self.app.logger.info('[API] Container: {}'.format(container.get('name')))
+            self.app.logger.info('[SERVICE][TRANSFER] ----------')
+            self.app.logger.info('[SERVICE][TRANSFER] Container: {}'.format(container.get('name')))
             if container.get('bytes') > 0:
                 meta, objects = self.swift.get_container(container.get('name'))
 
@@ -166,4 +166,4 @@ class SynchronizeProjects():
                         blob.metadata = metadata
 
                     blob.upload_from_string(content, content_type=obj.get('content_type'))
-                    self.app.logger.info('[API] Object: {}'.format(obj.get('name')))
+                    self.app.logger.info('[SERVICE][TRANSFER] Object: {}'.format(obj.get('name')))
