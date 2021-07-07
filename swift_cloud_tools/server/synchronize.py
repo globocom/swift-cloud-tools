@@ -8,6 +8,7 @@ from google.cloud.exceptions import NotFound
 from swiftclient import client as swift_client
 
 from swift_cloud_tools.server.utils import Keystone, Swift, Google
+from swift_cloud_tools.models import TransferProject
 
 BUCKET_LOCATION = 'SOUTHAMERICA-EAST1'
 RESERVED_META = [
@@ -47,6 +48,13 @@ class SynchronizeProjects():
         self.app.logger.info('[SERVICE][TRANSFER] container_count: {}'.format(container_count))
         self.app.logger.info('[SERVICE][TRANSFER] object_count: {}'.format(object_count))
         self.app.logger.info('[SERVICE][TRANSFER] bytes_used: {}'.format(bytes_used))
+
+        transfer_object = TransferProject.find_transfer_project(project_id)
+
+        if transfer_object:
+            transfer_object.object_count = int(object_count)
+            transfer_object.bytes_used = int(bytes_used)
+            transfer_object.save()
 
         if len(containers) > 0:
             gcp_client = google.get_gcp_client()

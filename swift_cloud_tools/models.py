@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 from flask_sqlalchemy import SQLAlchemy
+from sqlalchemy.dialects.mysql import BIGINT
 from sqlalchemy import func
 from datetime import datetime
 
@@ -95,7 +96,7 @@ class TransferProject(db.Model, SaveDeleteModel):
     project_name = db.Column(db.String(64), nullable=False)
     environment = db.Column(db.String(10), nullable=False)
     object_count = db.Column(db.Integer, default=0, nullable=True)
-    bytes_used = db.Column(db.Integer, default=0, nullable=True)
+    bytes_used = db.Column(BIGINT(unsigned=False), default=0, nullable=True)
     initial_date = db.Column(db.DateTime, nullable=True)
     final_date = db.Column(db.DateTime, nullable=True)
 
