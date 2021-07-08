@@ -57,11 +57,11 @@ class ExpiredObject(db.Model, SaveDeleteModel):
 
     def find_expired_object(account, container, obj):
         expired_object = ExpiredObject.query.filter(
-            func.lower(ExpiredObject.account)==account.lower()
+            func.lower(ExpiredObject.account) == account.lower()
         ).filter(
-            func.lower(ExpiredObject.container)==container.lower()
+            func.lower(ExpiredObject.container) == container.lower()
         ).filter(
-            func.lower(ExpiredObject.obj)==obj.lower()
+            func.lower(ExpiredObject.obj) == obj.lower()
         )
 
         if expired_object.count() > 0:
@@ -101,7 +101,7 @@ class TransferProject(db.Model, SaveDeleteModel):
     final_date = db.Column(db.DateTime, nullable=True)
 
     def __init__(self, project_id=None, project_name=None, environment=None,
-        object_count=None, bytes_used=None, initial_date=None, final_date=None):
+                 object_count=None, bytes_used=None, initial_date=None, final_date=None):
         self.project_id = project_id
         self.project_name = project_name
         self.environment = environment
@@ -110,9 +110,12 @@ class TransferProject(db.Model, SaveDeleteModel):
         self.initial_date = initial_date
         self.final_date = final_date
 
+    def to_dict(self):
+        return {c.name: getattr(self, c.name) for c in self.__table__.columns}
+
     def find_transfer_project(project_id):
         transfer_project = TransferProject.query.filter(
-            func.lower(TransferProject.project_id)==project_id
+            func.lower(TransferProject.project_id) == project_id
         )
 
         if transfer_project.count() > 0:

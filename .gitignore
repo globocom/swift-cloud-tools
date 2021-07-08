@@ -11,3 +11,6 @@ __pycache__/
 .cache
 coverage.xml
 swift_cloud_tools.conf
+
+.vscode/
+TODO
