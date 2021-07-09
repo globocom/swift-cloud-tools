@@ -1,4 +1,6 @@
 # -*- coding: utf-8 -*-
+import json
+
 from flask import request, Response
 from flask_restplus import Resource
 from flask import current_app as app
@@ -47,3 +49,18 @@ class Transfer(Resource):
             'environment': environment
         }))
         return Response(msg, mimetype="text/plain", status=status)
+
+
+@ns.route('/<string:project_id>')
+class TransferItem(Resource):
+
+    @is_authenticated
+    def get(self, project_id):
+        """Returns a project transfer item."""
+
+        tp = TransferProject.find_transfer_project(project_id)
+
+        if not tp:
+            return {}, 404
+
+        return tp.to_dict(), 200
