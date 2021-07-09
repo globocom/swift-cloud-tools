@@ -1,8 +1,8 @@
 """empty message
 
-Revision ID: 269439d4291b
+Revision ID: d472371f34c3
 Revises: 
-Create Date: 2021-07-09 13:30:05.925285
+Create Date: 2021-07-09 20:24:05.761391
 
 """
 from alembic import op
@@ -10,7 +10,7 @@ import sqlalchemy as sa
 from sqlalchemy.dialects import mysql
 
 # revision identifiers, used by Alembic.
-revision = '269439d4291b'
+revision = 'd472371f34c3'
 down_revision = None
 branch_labels = None
 depends_on = None
@@ -29,7 +29,7 @@ def upgrade():
     )
     op.create_table('transfer_project',
     sa.Column('id', sa.Integer(), nullable=False),
-    sa.Column('project_id', sa.String(length=64), nullable=False, unique=True),
+    sa.Column('project_id', sa.String(length=64), nullable=False),
     sa.Column('project_name', sa.String(length=64), nullable=False),
     sa.Column('environment', sa.String(length=10), nullable=False),
     sa.Column('object_count', sa.Integer(), nullable=True),
@@ -37,7 +37,7 @@ def upgrade():
     sa.Column('initial_date', sa.DateTime(), nullable=True),
     sa.Column('final_date', sa.DateTime(), nullable=True),
     sa.PrimaryKeyConstraint('id'),
-    sa.UniqueConstraint('project_id', 'project_name', 'environment', name='transfer_project_unique')
+    sa.UniqueConstraint('project_id')
     )
     # ### end Alembic commands ###
 

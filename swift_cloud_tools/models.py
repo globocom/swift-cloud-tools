@@ -91,10 +91,6 @@ class ExpiredObject(db.Model, SaveDeleteModel):
 
 
 class TransferProject(db.Model, SaveDeleteModel):
-    __table_args__ = (
-        db.UniqueConstraint('project_id', 'project_name', 'environment', name='transfer_project_unique'),
-    )
-
     id = db.Column(db.Integer, primary_key=True)
     project_id = db.Column(db.String(64), nullable=False, unique=True)
     project_name = db.Column(db.String(64), nullable=False)
