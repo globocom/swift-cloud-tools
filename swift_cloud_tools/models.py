@@ -92,7 +92,7 @@ class ExpiredObject(db.Model, SaveDeleteModel):
 
 class TransferProject(db.Model, SaveDeleteModel):
     id = db.Column(db.Integer, primary_key=True)
-    project_id = db.Column(db.String(64), nullable=False)
+    project_id = db.Column(db.String(64), nullable=False, unique=True)
     project_name = db.Column(db.String(64), nullable=False)
     environment = db.Column(db.String(10), nullable=False)
     object_count = db.Column(db.Integer, default=0, nullable=True)

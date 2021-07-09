@@ -29,7 +29,7 @@ def upgrade():
     )
     op.create_table('transfer_project',
     sa.Column('id', sa.Integer(), nullable=False),
-    sa.Column('project_id', sa.String(length=64), nullable=False),
+    sa.Column('project_id', sa.String(length=64), nullable=False, unique=True),
     sa.Column('project_name', sa.String(length=64), nullable=False),
     sa.Column('environment', sa.String(length=10), nullable=False),
     sa.Column('object_count', sa.Integer(), nullable=True),
