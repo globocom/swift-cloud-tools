@@ -1,8 +1,8 @@
 """empty message
 
-Revision ID: 5cc75abf1bf9
+Revision ID: 269439d4291b
 Revises: 
-Create Date: 2021-07-07 09:50:00.961753
+Create Date: 2021-07-09 13:30:05.925285
 
 """
 from alembic import op
@@ -10,7 +10,7 @@ import sqlalchemy as sa
 from sqlalchemy.dialects import mysql
 
 # revision identifiers, used by Alembic.
-revision = '5cc75abf1bf9'
+revision = '269439d4291b'
 down_revision = None
 branch_labels = None
 depends_on = None
@@ -36,7 +36,8 @@ def upgrade():
     sa.Column('bytes_used', mysql.BIGINT(), nullable=True),
     sa.Column('initial_date', sa.DateTime(), nullable=True),
     sa.Column('final_date', sa.DateTime(), nullable=True),
-    sa.PrimaryKeyConstraint('id')
+    sa.PrimaryKeyConstraint('id'),
+    sa.UniqueConstraint('project_id', 'project_name', 'environment', name='transfer_project_unique')
     )
     # ### end Alembic commands ###
 
