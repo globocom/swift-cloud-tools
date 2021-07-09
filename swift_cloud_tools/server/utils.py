@@ -47,22 +47,26 @@ class Swift():
         self.project_id = project_id
         admin_url = app.config.get('KEYSTONE_ADMIN_URL')
         self.storage_url = '{}/v1/AUTH_{}'.format(admin_url, project_id)
-        self.http_conn = swift_client.http_connection(self.storage_url, insecure=False)
+        self.http_conn = swift_client.http_connection(self.storage_url, insecure=False, timeout=3600)
         self.conn = connection
         self.x_cloud_bypass = app.config.get('X_CLOUD_BYPASS')
 
     def set_account_meta_cloud(self):
         try:
+            resp = {}
             swift_client.post_account(
                 self.storage_url,
                 self.conn.auth_token,
+                response_dict=resp,
                 headers={'X-Account-Meta-Cloud': 'gcp'}
             )
-        except swift_client.ClientException as err:
-            app.logger.info('[API] 500 GET Synchronize: {}'.format(err))
-            return Response(err, mimetype="text/plain", status=500)
+        except swift_client.ClientException:
+            pass
+
+        return resp['status'], resp['reason']
 
     def get_account(self):
+        # import ipdb;ipdb.set_trace()
         try:
             return swift_client.get_account(
                 self.storage_url,
@@ -72,8 +76,7 @@ class Swift():
                 headers={'X-Cloud-Bypass': self.x_cloud_bypass}
             )
         except swift_client.ClientException as err:
-            app.logger.info('[API] 500 GET Synchronize: {}'.format(err))
-            return Response(err, mimetype="text/plain", status=500)
+            raise err
 
     def get_container(self, container, prefix=None):
         try:
@@ -88,5 +91,53 @@ class Swift():
                 headers={'X-Cloud-Bypass': self.x_cloud_bypass}
             )
         except swift_client.ClientException as err:
-            app.logger.info('[API] 500 GET Synchronize: {}'.format(err))
-            return Response(err, mimetype="text/plain", status=500)
+            raise err
+
+    def put_container(self, container, headers):
+        try:
+            resp = {}
+            swift_client.put_container(
+                self.storage_url,
+                self.conn.auth_token,
+                container,
+                headers=headers,
+                http_conn=self.http_conn,
+                response_dict=resp
+            )
+        except swift_client.ClientException:
+            pass
+
+        return resp['status'], resp['reason']
+
+    def get_object(self, container, obj):
+        try:
+            return swift_client.get_object(
+                self.storage_url,
+                self.conn.auth_token,
+                container,
+                obj,
+                http_conn=self.http_conn,
+                headers={'X-Cloud-Bypass': self.x_cloud_bypass}
+            )
+        except swift_client.ClientException as err:
+            raise err
+
+    def put_object(self, container, name, content, content_length, content_type, headers):
+        try:
+            resp = {}
+            swift_client.put_object(
+                self.storage_url,
+                token=self.conn.auth_token,
+                container=container,
+                name=name,
+                contents=content,
+                content_length=content_length,
+                content_type=content_type,
+                headers=headers,
+                http_conn=self.http_conn,
+                response_dict=resp
+            )
+        except swift_client.ClientException:
+            pass
+
+        return resp['status'], resp['reason']

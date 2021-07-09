@@ -1,4 +1,5 @@
 # -*- coding: utf-8 -*-
+import requests
 import time
 import os
 
@@ -26,6 +27,8 @@ class SynchronizeProjects():
     def synchronize(self, project_id):
         """Get projects in swift."""
 
+        self.project_id = project_id
+
         self.app = create_app('config/{}_config.py'.format(os.environ.get("FLASK_CONFIG")))
         ctx = self.app.app_context()
         ctx.push()
@@ -35,9 +38,28 @@ class SynchronizeProjects():
         self.swift = Swift(self.conn, project_id)
         google = Google()
 
-        self.swift.set_account_meta_cloud()
+        status, msg = self.swift.set_account_meta_cloud()
+
+        self.app.logger.info("[SERVICE][TRANSFER] {} SET account_meta_cloud 'AUTH_{}': {}".format(
+            status,
+            project_id,
+            msg
+        ))
+
+        if status != 204:
+            return Response(msg, mimetype="text/plain", status=status)
+
         time.sleep(5)
-        account_stat, containers = self.swift.get_account()
+
+        try:
+            account_stat, containers = self.swift.get_account()
+        except Exception as err:
+            self.app.logger.info("[SERVICE][TRANSFER] {} GET account 'AUTH_{}': {}".format(
+                err.http_status,
+                project_id,
+                err.msg
+            ))
+            return Response(err.msg, mimetype="text/plain", status=err.http_status)
 
         container_count = account_stat.get('x-account-container-count')
         object_count = account_stat.get('x-account-object-count')
@@ -75,52 +97,75 @@ class SynchronizeProjects():
         for container in containers:
             self.app.logger.info('[SERVICE][TRANSFER] ----------')
             self.app.logger.info('[SERVICE][TRANSFER] Container: {}'.format(container.get('name')))
-            if container.get('bytes') > 0:
+
+            # if container.get('bytes') > 0:
+            try:
                 meta, objects = self.swift.get_container(container.get('name'))
-
-                blob = bucket.blob(container.get('name') + '/')
-                metadata = {}
-
-                for item in meta.items():
-                    key, value = item
-                    key = key.lower()
-                    prefix = key.split('x-container-meta-')
-
-                    if len(prefix) > 1:
-                        meta_key = 'meta-{}'.format(prefix[1].lower())
-                        metadata[meta_key] = item[1].lower()
-                        continue
-
-                    if key == 'x-container-read':
-                        metadata["read"] = value
-                        continue
-
-                    if key == 'x-versions-location' or key == 'x-history-location':
-                        metadata["x-versions-location"] = value
-                        continue
-
-                    if key == 'x-undelete-enabled':
-                        metadata["x-container-sysmeta-undelete-enabled"] = value
-                        metadata["x-undelete-enabled"] = value
-                        continue
-
-                blob.metadata = metadata
-                blob.upload_from_string('',
-                    content_type='application/directory;charset=UTF-8'
-                )
-
-                if len(objects) > 0:
-                    self._get_container(
+            except requests.exceptions.ConnectionError as err:
+                try:
+                    # import ipdb;ipdb.set_trace()
+                    self.conn = keystone.get_keystone_connection()
+                    self.swift = Swift(self.conn, project_id)
+                    meta, objects = self.swift.get_container(container.get('name'))
+                except Exception as err:
+                    self.app.logger.info("[SERVICE][TRANSFER] {} Get container '{}': {}".format(
+                        err.http_status,
                         container.get('name'),
-                        bucket,
-                        objects
-                    )
+                        err.msg
+                    ))
+                    continue
+            except Exception as err:
+                self.app.logger.info("[SERVICE][TRANSFER] {} Get container '{}': {}".format(
+                    err.http_status,
+                    container.get('name'),
+                    err.msg
+                ))
+                continue
+
+            status, msg = self.swift.put_container(container.get('name'), meta)
+
+            self.app.logger.info("[SERVICE][TRANSFER] {} PUT container '{}': {}".format(
+                status,
+                container.get('name'),
+                msg
+            ))
+
+            if len(objects) > 0:
+                self._get_container(
+                    container.get('name'),
+                    bucket,
+                    objects
+                )
 
     def _get_container(self, container, bucket, objects):
         for obj in objects:
             if obj.get('subdir'):
                 prefix = obj.get('subdir')
-                meta, objects = self.swift.get_container(container, prefix)
+
+                try:
+                    meta, objects = self.swift.get_container(container, prefix)
+                except requests.exceptions.ConnectionError as err:
+                    try:
+                        # import ipdb;ipdb.set_trace()
+                        self.conn = keystone.get_keystone_connection()
+                        self.swift = Swift(self.conn, project_id)
+                        meta, objects = self.swift.get_container(container.get('name'))
+                    except Exception as err:
+                        self.app.logger.info("[SERVICE][TRANSFER] {} Get container '{}/{}': {}".format(
+                            err.http_status,
+                            container,
+                            prefix,
+                            err.msg
+                        ))
+                        continue
+                except Exception as err:
+                    self.app.logger.info("[SERVICE][TRANSFER] {} Get container '{}/{}': {}".format(
+                        err.http_status,
+                        container,
+                        prefix,
+                        err.msg
+                    ))
+                    continue
 
                 if len(objects) > 0:
                     self._get_container(
@@ -130,48 +175,45 @@ class SynchronizeProjects():
                     )
             else:
                 if obj.get('content_type') != 'application/directory':
-                    headers, content = swift_client.get_object(
-                        self.swift.storage_url,
-                        self.conn.auth_token,
+                    try:
+                        headers, content = self.swift.get_object(container, obj.get('name'))
+                    except requests.exceptions.ConnectionError as err:
+                        # err.request.path_url
+                        # err.request.url
+                        try:
+                            # import ipdb;ipdb.set_trace()
+                            self.conn = keystone.get_keystone_connection()
+                            self.swift = Swift(self.conn, project_id)
+                            headers, content = self.swift.get_object(container, obj.get('name'))
+                        except Exception as err:
+                            self.app.logger.info("[SERVICE][TRANSFER] {} Get object '{}/{}': {}".format(
+                                err.http_status,
+                                container,
+                                obj.get('name'),
+                                err.msg
+                            ))
+                            continue
+                    except Exception as err:
+                        self.app.logger.info("[SERVICE][TRANSFER] {} Get object '{}/{}': {}".format(
+                            err.http_status,
+                            container,
+                            obj.get('name'),
+                            err.msg
+                        ))
+                        continue
+
+                    status, msg = self.swift.put_object(
                         container,
                         obj.get('name'),
-                        http_conn=self.swift.http_conn
+                        content,
+                        obj.get('bytes'),
+                        obj.get('content_type'),
+                        headers
                     )
 
-                    obj_path = "{}/{}".format(container, obj.get('name'))
-                    blob = bucket.blob(obj_path)
-
-                    if headers.get('cache-control'):
-                        blob.cache_control = headers.get('cache-control')
-
-                    if headers.get('content-encoding'):
-                        blob.content_encoding = headers.get('content-encoding')
-
-                    if headers.get('content-disposition'):
-                        blob.content_disposition = headers.get('content-disposition')
-
-                    metadata = {}
-
-                    meta_keys = list(filter(
-                        lambda x: 'x-object-meta' in x.lower(),
-                        [*headers.keys()]
+                    self.app.logger.info("[SERVICE][TRANSFER] {} PUT object '{}/{}': {}".format(
+                        status,
+                        container,
+                        obj.get('name'),
+                        msg
                     ))
-
-                    reserved_keys = list(filter(
-                        lambda x: x.lower() in RESERVED_META,
-                        [*headers.keys()]
-                    ))
-
-                    for item in meta_keys:
-                        key = item.lower().split('x-object-meta-')[-1]
-                        metadata[key] = headers.get(item)
-
-                    for item in reserved_keys:
-                        key = item.lower()
-                        metadata[key] = headers.get(item)
-
-                    if len(meta_keys) or len(reserved_keys):
-                        blob.metadata = metadata
-
-                    blob.upload_from_string(content, content_type=obj.get('content_type'))
-                    self.app.logger.info('[SERVICE][TRANSFER] Object: {}'.format(obj.get('name')))

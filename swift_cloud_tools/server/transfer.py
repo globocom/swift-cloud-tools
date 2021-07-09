@@ -1,6 +1,7 @@
 #!/usr/bin/python3
 import asyncio
 import threading
+import logging
 import copy
 import os
 import time
@@ -11,6 +12,8 @@ from swift_cloud_tools.models import TransferProject
 from swift_cloud_tools.server.synchronize import SynchronizeProjects
 from swift_cloud_tools.server.zbx_passive import Zabbix
 from swift_cloud_tools import create_app
+
+log = logging.getLogger(__name__)
 
 
 async def work():
@@ -82,5 +85,5 @@ if __name__ == '__main__':
     except KeyboardInterrupt:
         pass
     finally:
-        app.logger.info('[SERVICE][TRANSFER] Closing loop')
+        log.info('[SERVICE][TRANSFER] Closing loop')
         loop.close()
