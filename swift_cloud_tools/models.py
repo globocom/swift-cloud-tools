@@ -95,18 +95,27 @@ class TransferProject(db.Model, SaveDeleteModel):
     project_id = db.Column(db.String(64), nullable=False, unique=True)
     project_name = db.Column(db.String(64), nullable=False)
     environment = db.Column(db.String(10), nullable=False)
-    object_count = db.Column(db.Integer, default=0, nullable=True)
-    bytes_used = db.Column(BIGINT(unsigned=False), default=0, nullable=True)
+    object_count_swift = db.Column(db.Integer, default=0, nullable=True)
+    bytes_used_swift = db.Column(BIGINT(unsigned=False), default=0, nullable=True)
+    last_object = db.Column(db.String(255), nullable=True)
+    get_error = db.Column(db.Integer, default=0, nullable=True)
+    object_count_gcp = db.Column(db.Integer, default=0, nullable=True)
+    bytes_used_gcp = db.Column(BIGINT(unsigned=False), default=0, nullable=True)
     initial_date = db.Column(db.DateTime, nullable=True)
     final_date = db.Column(db.DateTime, nullable=True)
 
-    def __init__(self, project_id=None, project_name=None, environment=None,
-                 object_count=None, bytes_used=None, initial_date=None, final_date=None):
+    def __init__(self, project_id, project_name, environment, object_count_swift=None, 
+                 bytes_used_swift=None, last_object=None, get_error=None, object_count_gcp=None,
+                 bytes_used_gcp=None, initial_date=None, final_date=None):
         self.project_id = project_id
         self.project_name = project_name
         self.environment = environment
-        self.object_count = object_count
-        self.bytes_used = bytes_used
+        self.object_count_swift = object_count_swift
+        self.bytes_used_swift = bytes_used_swift
+        self.last_object = last_object
+        self.get_error = get_error
+        self.object_count_gcp = object_count_gcp
+        self.bytes_used_gcp = bytes_used_gcp
         self.initial_date = initial_date
         self.final_date = final_date
 

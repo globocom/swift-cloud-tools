@@ -10,6 +10,15 @@ from google.oauth2 import service_account
 from google.cloud import storage
 
 
+class Transfer():
+
+    def __init__(self, last_object='', get_error=0, object_count_gcp=0, bytes_used_gcp=0):
+        self.last_object = last_object
+        self.get_error = get_error
+        self.object_count_gcp = object_count_gcp
+        self.bytes_used_gcp = bytes_used_gcp
+
+
 class Google():
 
     def _get_credentials(self):
@@ -60,13 +69,12 @@ class Swift():
                 response_dict=resp,
                 headers={'X-Account-Meta-Cloud': 'gcp'}
             )
-        except swift_client.ClientException:
+        except Exception:
             pass
 
         return resp['status'], resp['reason']
 
     def get_account(self):
-        # import ipdb;ipdb.set_trace()
         try:
             return swift_client.get_account(
                 self.storage_url,
@@ -75,10 +83,10 @@ class Swift():
                 http_conn=self.http_conn,
                 headers={'X-Cloud-Bypass': self.x_cloud_bypass}
             )
-        except swift_client.ClientException as err:
+        except Exception as err:
             raise err
 
-    def get_container(self, container, prefix=None):
+    def get_container(self, container, prefix=None, marker=None):
         try:
             return swift_client.get_container(
                 self.storage_url,
@@ -86,11 +94,12 @@ class Swift():
                 container,
                 delimiter='/',
                 prefix=prefix,
-                full_listing=False,
+                marker=marker,
+                full_listing=True,
                 http_conn=self.http_conn,
                 headers={'X-Cloud-Bypass': self.x_cloud_bypass}
             )
-        except swift_client.ClientException as err:
+        except Exception as err:
             raise err
 
     def put_container(self, container, headers):
@@ -104,8 +113,8 @@ class Swift():
                 http_conn=self.http_conn,
                 response_dict=resp
             )
-        except swift_client.ClientException:
-            pass
+        except Exception as err:
+            raise err
 
         return resp['status'], resp['reason']
 
@@ -119,7 +128,7 @@ class Swift():
                 http_conn=self.http_conn,
                 headers={'X-Cloud-Bypass': self.x_cloud_bypass}
             )
-        except swift_client.ClientException as err:
+        except Exception as err:
             raise err
 
     def put_object(self, container, name, content, content_length, content_type, headers):
@@ -137,7 +146,7 @@ class Swift():
                 http_conn=self.http_conn,
                 response_dict=resp
             )
-        except swift_client.ClientException:
-            pass
+        except Exception as err:
+            raise err
 
         return resp['status'], resp['reason']

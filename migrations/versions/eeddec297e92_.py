@@ -1,8 +1,8 @@
 """empty message
 
-Revision ID: d472371f34c3
+Revision ID: eeddec297e92
 Revises: 
-Create Date: 2021-07-09 20:24:05.761391
+Create Date: 2021-07-14 16:58:19.496675
 
 """
 from alembic import op
@@ -10,7 +10,7 @@ import sqlalchemy as sa
 from sqlalchemy.dialects import mysql
 
 # revision identifiers, used by Alembic.
-revision = 'd472371f34c3'
+revision = 'eeddec297e92'
 down_revision = None
 branch_labels = None
 depends_on = None
@@ -32,8 +32,12 @@ def upgrade():
     sa.Column('project_id', sa.String(length=64), nullable=False),
     sa.Column('project_name', sa.String(length=64), nullable=False),
     sa.Column('environment', sa.String(length=10), nullable=False),
-    sa.Column('object_count', sa.Integer(), nullable=True),
-    sa.Column('bytes_used', mysql.BIGINT(), nullable=True),
+    sa.Column('object_count_swift', sa.Integer(), nullable=True),
+    sa.Column('bytes_used_swift', mysql.BIGINT(), nullable=True),
+    sa.Column('last_object', sa.String(length=255), nullable=True),
+    sa.Column('get_error', sa.Integer(), nullable=True),
+    sa.Column('object_count_gcp', sa.Integer(), nullable=True),
+    sa.Column('bytes_used_gcp', mysql.BIGINT(), nullable=True),
     sa.Column('initial_date', sa.DateTime(), nullable=True),
     sa.Column('final_date', sa.DateTime(), nullable=True),
     sa.PrimaryKeyConstraint('id'),
