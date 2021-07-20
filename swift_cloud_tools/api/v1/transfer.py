@@ -4,6 +4,7 @@ import json
 from flask import request, Response
 from flask_restplus import Resource
 from flask import current_app as app
+from datetime import datetime
 
 from swift_cloud_tools.api.v1 import api
 from swift_cloud_tools.models import TransferProject
@@ -63,4 +64,8 @@ class TransferItem(Resource):
         if not tp:
             return {}, 404
 
-        return tp.to_dict(), 200
+        item = tp.to_dict()
+        item['initial_date'] = datetime.strftime(item.get('initial_date'), "%Y-%m-%d %H:%M:%S")
+        item['final_date'] = datetime.strftime(item.get('final_date'), "%Y-%m-%d %H:%M:%S")
+
+        return item, 200

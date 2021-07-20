@@ -33,7 +33,7 @@ def create_app(config_module=None):
     handler.setLevel(logging.INFO)
     logging.basicConfig(
         level=logging.INFO,
-        format='%(asctime)s [%(threadName)s] %(levelname)s %(message)s'
+        format='%(asctime)s %(levelname)s %(message)s'
     )
     app.logger.addHandler(handler)
 
