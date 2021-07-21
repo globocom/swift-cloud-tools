@@ -62,7 +62,7 @@ async def work():
                     transfer_object.save()
 
         for raw in raws[:available]:
-            sync = SynchronizeProjects()
+            sync = SynchronizeProjects(raw.project_id)
             x = threading.Thread(target=sync.synchronize, args=(raw.project_id,), name=raw.project_id)
             x.start()
             threads[raw.project_id] = x

@@ -65,7 +65,9 @@ class TransferItem(Resource):
             return {}, 404
 
         item = tp.to_dict()
-        item['initial_date'] = datetime.strftime(item.get('initial_date'), "%Y-%m-%d %H:%M:%S")
-        item['final_date'] = datetime.strftime(item.get('final_date'), "%Y-%m-%d %H:%M:%S")
+        if item.get('initial_date'):
+            item['initial_date'] = datetime.strftime(item.get('initial_date'), "%Y-%m-%d %H:%M:%S")
+        if item.get('final_date'):
+            item['final_date'] = datetime.strftime(item.get('final_date'), "%Y-%m-%d %H:%M:%S")
 
         return item, 200
