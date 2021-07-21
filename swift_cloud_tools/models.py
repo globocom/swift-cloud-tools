@@ -11,10 +11,12 @@ class SaveDeleteModel():
 
     def save(self):
         try:
+            status = 200
             if self.id == None:
                 db.session.add(self)
+                status = 201
             db.session.commit()
-            return "ok", 201
+            return "ok", status
         except Exception as e:
             if '1062' in str(e):
                 return "Duplicate entry", 409
@@ -25,7 +27,7 @@ class SaveDeleteModel():
         try:
             db.session.delete(self)
             db.session.commit()
-            return 'ok', 201
+            return 'ok', 200
         except Exception as e:
             if 'is not persisted' in str(e):
                 return 'Not found', 404
@@ -151,3 +153,52 @@ class TransferProject(db.Model, SaveDeleteModel):
                 self.project_name, self.environment), status
 
         return msg, status
+
+
+class ContainerInfo(db.Model, SaveDeleteModel):
+    id = db.Column(db.Integer, primary_key=True)
+    project_id = db.Column(db.String(64), nullable=False, unique=True)
+    container_name = db.Column(db.String(255), nullable=False)
+    object_count = db.Column(db.Integer, default=0, nullable=True)
+    bytes_used = db.Column(BIGINT(unsigned=False), default=0, nullable=True)
+    updated = db.Column(db.DateTime, default=datetime.utcnow)
+
+    def __init__(self, project_id=None, container_name=None,
+                 object_count=None, bytes_used=None, updated=None):
+        self.project_id = project_id
+        self.container_name = container_name
+        self.object_count = object_count
+        self.bytes_used = bytes_used
+        self.updated = updated
+
+    def to_dict(self):
+        return {c.name: getattr(self, c.name) for c in self.__table__.columns}
+
+    def find_container_info(project_id, container_name):
+        container_info = (ContainerInfo.query
+            .filter(ContainerInfo.project_id == project_id)
+            .filter(ContainerInfo.container_name == container_name))
+
+        if container_info.count() > 0:
+            return container_info.first()
+        else:
+            return None
+
+    def account_data(project_id):
+        data = ContainerInfo.query.filter(ContainerInfo.project_id == project_id)
+
+        if data.count() == 0:
+            return None
+
+        bytes_used = 0
+        object_count = 0
+
+        for item in data:
+            bytes_used += item.bytes_used
+            object_count += item.object_count
+
+        return {
+            'container_count': len(data),
+            'bytes_used': bytes_used,
+            'object_count': object_count
+        }
