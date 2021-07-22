@@ -30,22 +30,25 @@ class ContainerInfo(Resource):
         project_id = params.get("project_id")
         container_name = params.get("container_name")
         size = int(params.get("size"))
+        remove = params.get("remove", False)
 
-        c_info = ContainerInfo.find_container_info(project_id, container_name)
+        current = ContainerInfo.find_container_info(project_id, container_name)
+        c_info = ContainerInfo(project_id=project_id, container_name=container_name)
 
-        if not c_info:
-            container_info = ContainerInfo(project_id=project_id,
-                                           container_name=container_name,
-                                           object_count=1,
-                                           bytes_used=size)
-            msg, status = container_info.save()
+        if not current:
+            c_info.object_count = 1
+            c_info.bytes_used = size
+            msg, status = c_info.save()
             return Response(msg, mimetype="text/plain", status=status)
 
-        container_info = ContainerInfo(project_id=project_id,
-                                       container_name=container_name,
-                                       object_count=c_info.object_count + 1,
-                                       bytes_used=c_info.bytes_used + size)
-        msg, status = container_info.save()
+        c_info.object_count = current.object_count + 1
+        c_info.bytes_used = current.bytes_used + size
+
+        if remove:
+            c_info.object_count = current.object_count - 1
+            c_info.bytes_used = current.bytes_used - size
+
+        msg, status = c_info.save()
         return Response(msg, mimetype="text/plain", status=status)
 
 
