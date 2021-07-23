@@ -74,7 +74,10 @@ class SynchronizeProjects():
         gcp_client = google.get_gcp_client()
         account = 'auth_{}'.format(project_id)
         try:
-            self.bucket = gcp_client.get_bucket(account)
+            self.bucket = gcp_client.get_bucket(
+                account,
+                timeout=30
+            )
         except NotFound:
             self.bucket = gcp_client.create_bucket(
                 account,
@@ -266,7 +269,7 @@ class SynchronizeProjects():
                 blob.upload_from_string('',
                     content_type='application/directory',
                     num_retries=3,
-                    timeout=120
+                    timeout=30
                 )
                 self.app.logger.info("[{}] 201 PUT folder '{}/{}': Created".format(
                     transfer_object.project_name,
@@ -389,7 +392,7 @@ class SynchronizeProjects():
                         content,
                         content_type=obj.get('content_type'),
                         num_retries=3,
-                        timeout=120
+                        timeout=30
                     )
                     self.app.logger.info("[{}] 201 PUT object '{}/{}': Created".format(
                         transfer_object.project_name,
@@ -424,7 +427,24 @@ class SynchronizeProjects():
             google = Google()
             gcp_client = google.get_gcp_client()
             account = 'auth_{}'.format(self.project_id)
-            self.bucket = bucket = gcp_client.get_bucket(account)
+            try:
+                self.bucket = bucket = gcp_client.get_bucket(
+                    account,
+                    timeout=30
+                )
+            except requests.exceptions.ReadTimeout as err:
+                try:
+                    self.bucket = bucket = gcp_client.get_bucket(
+                        account,
+                        timeout=30
+                    )
+                except Exception as err:
+                    app.logger.error("[{}] {} Get bucket '{}': {}".format(
+                        self.project_name,
+                        err.http_status,
+                        account,
+                        err.http_reason
+                    ))
 
         try:
             meta, objects = self.swift.get_container(container.get('name'))
@@ -480,7 +500,7 @@ class SynchronizeProjects():
         blob.upload_from_string('',
             content_type='application/directory',
             num_retries=3,
-            timeout=120
+            timeout=30
         )
         app.logger.info("[{}] 201 PUT container '{}': Created".format(
             self.project_name,
