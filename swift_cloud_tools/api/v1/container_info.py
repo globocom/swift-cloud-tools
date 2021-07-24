@@ -1,4 +1,5 @@
 import json
+from datetime import datetime
 
 from flask import request, Response
 from flask_restplus import Resource
@@ -35,7 +36,9 @@ class ContainerInfoAdd(Resource):
         current = ContainerInfo.find_container_info(project_id, container_name)
 
         if not current:
-            c_info = ContainerInfo(project_id=project_id, container_name=container_name)
+            c_info = ContainerInfo(project_id=project_id,
+                                   container_name=container_name,
+                                   updated=datetime.utcnow())
             c_info.object_count = 1
             c_info.bytes_used = size
             msg, status = c_info.save()
@@ -47,6 +50,8 @@ class ContainerInfoAdd(Resource):
         else:
             current.object_count = current.object_count + 1
             current.bytes_used = current.bytes_used + size
+
+        current.updated = datetime.utcnow()
 
         msg, status = current.save()
         return Response(msg, mimetype="text/plain", status=status)
