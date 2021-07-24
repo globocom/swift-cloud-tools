@@ -12,7 +12,7 @@ ns = api.namespace("container-info", description="Container Info")
 
 
 @ns.route("/")
-class ContainerInfo(Resource):
+class ContainerInfoAdd(Resource):
     
     @is_authenticated
     def post(self):
@@ -33,27 +33,27 @@ class ContainerInfo(Resource):
         remove = params.get("remove", False)
 
         current = ContainerInfo.find_container_info(project_id, container_name)
-        c_info = ContainerInfo(project_id=project_id, container_name=container_name)
 
         if not current:
+            c_info = ContainerInfo(project_id=project_id, container_name=container_name)
             c_info.object_count = 1
             c_info.bytes_used = size
             msg, status = c_info.save()
             return Response(msg, mimetype="text/plain", status=status)
 
-        c_info.object_count = current.object_count + 1
-        c_info.bytes_used = current.bytes_used + size
-
         if remove:
-            c_info.object_count = current.object_count - 1
-            c_info.bytes_used = current.bytes_used - size
+            current.object_count = max(0, current.object_count - 1)
+            current.bytes_used = max(0, current.bytes_used - size)
+        else:
+            current.object_count = current.object_count + 1
+            current.bytes_used = current.bytes_used + size
 
-        msg, status = c_info.save()
+        msg, status = current.save()
         return Response(msg, mimetype="text/plain", status=status)
 
 
 @ns.route("/<string:project_id>/<string:container_name>")
-class ContainerInfoItem(Resource):
+class ContainerInfoGet(Resource):
     
     @is_authenticated
     def get(self, project_id, container_name):
