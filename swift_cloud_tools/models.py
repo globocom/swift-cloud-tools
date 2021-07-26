@@ -10,6 +10,7 @@ db = SQLAlchemy(session_options={'autocommit': True})
 class SaveDeleteModel():
 
     def save(self):
+        db.session.begin()
         try:
             status = 200
             if self.id == None:
@@ -24,6 +25,7 @@ class SaveDeleteModel():
                 return str(e.args), 500
 
     def delete(self):
+        db.session.begin()
         try:
             db.session.delete(self)
             db.session.commit()
@@ -72,7 +74,6 @@ class ExpiredObject(db.Model, SaveDeleteModel):
             return None
 
     def save(self):
-        db.session.begin()
         msg, status = SaveDeleteModel.save(self)
 
         if status == 201:
@@ -82,10 +83,9 @@ class ExpiredObject(db.Model, SaveDeleteModel):
         return msg, status
 
     def delete(self):
-        db.session.begin()
         msg, status = SaveDeleteModel.delete(self)
 
-        if status == 201:
+        if status == 200:
             return "Expired object '{}/{}/{}' deleted".format(
                 self.account, self.container, self.obj), status
 
@@ -135,7 +135,6 @@ class TransferProject(db.Model, SaveDeleteModel):
             return None
 
     def save(self):
-        db.session.begin()
         msg, status = SaveDeleteModel.save(self)
 
         if status == 201:
@@ -145,10 +144,9 @@ class TransferProject(db.Model, SaveDeleteModel):
         return msg, status
 
     def delete(self):
-        db.session.begin()
         msg, status = SaveDeleteModel.delete(self)
 
-        if status == 201:
+        if status == 200:
             return "Transfer project '{}' environment '{}' deleted".format(
                 self.project_name, self.environment), status
 
@@ -157,7 +155,7 @@ class TransferProject(db.Model, SaveDeleteModel):
 
 class ContainerInfo(db.Model, SaveDeleteModel):
     id = db.Column(db.Integer, primary_key=True)
-    project_id = db.Column(db.String(64), nullable=False, unique=True)
+    project_id = db.Column(db.String(64), nullable=False)
     container_name = db.Column(db.String(255), nullable=False)
     object_count = db.Column(db.Integer, default=0, nullable=True)
     bytes_used = db.Column(BIGINT(unsigned=False), default=0, nullable=True)
@@ -170,6 +168,10 @@ class ContainerInfo(db.Model, SaveDeleteModel):
         self.object_count = object_count
         self.bytes_used = bytes_used
         self.updated = updated
+
+    __table_args__ = (
+        db.UniqueConstraint(project_id, container_name),
+    )
 
     def to_dict(self):
         return {c.name: getattr(self, c.name) for c in self.__table__.columns}
@@ -198,7 +200,7 @@ class ContainerInfo(db.Model, SaveDeleteModel):
             object_count += item.object_count
 
         return {
-            'container_count': len(data),
+            'container_count': data.count(),
             'bytes_used': bytes_used,
             'object_count': object_count
         }
