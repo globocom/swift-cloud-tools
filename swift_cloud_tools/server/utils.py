@@ -32,7 +32,10 @@ class Google():
 
     def get_gcp_client(self):
         credentials = self._get_credentials()
-        return storage.Client(credentials=credentials)
+        return storage.Client(
+            credentials=credentials,
+            client_options={'api_endpoint': os.environ.get("GCS_API_ACCESS_ENDPOINT")}
+        )
 
 
 class Keystone():
