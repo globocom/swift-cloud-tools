@@ -210,7 +210,7 @@ class SwiftCloudToolsKeystoneMiddlewareTest(DatabaseTestCase):
             headers=self.headers
         ).get_response(self.app)
 
-        self.assertEqual(resp.status_code, 201)
+        self.assertEqual(resp.status_code, 200)
         body = "Expired object '{}/{}/{}' deleted".format(
             data.get('account'), data.get('container'), data.get('object'))
         self.assertEqual(resp.body, body.encode('utf-8'))

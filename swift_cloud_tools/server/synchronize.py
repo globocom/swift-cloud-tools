@@ -11,7 +11,7 @@ from google.cloud.exceptions import NotFound
 from swiftclient import client as swift_client
 
 from swift_cloud_tools.server.utils import Keystone, Swift, Google, Transfer
-from swift_cloud_tools.models import TransferProject
+from swift_cloud_tools.models import TransferProject, TransferProjectError
 
 BUCKET_LOCATION = 'SOUTHAMERICA-EAST1'
 RESERVED_META = [
@@ -132,7 +132,7 @@ class SynchronizeProjects():
 
         if transfer_object.last_object and len(containers) > 0:
             transfer.last_object = transfer_object.last_object
-            transfer.get_error = transfer_object.get_error
+            transfer.count_error = transfer_object.count_error
             transfer.object_count_gcp = transfer_object.object_count_gcp
             transfer.bytes_used_gcp = transfer_object.bytes_used_gcp
             container = transfer_object.last_object.split('/')[0]
@@ -255,7 +255,7 @@ class SynchronizeProjects():
                 )
 
         transfer_object.last_object = transfer.last_object
-        transfer_object.get_error = transfer.get_error
+        transfer_object.count_error = transfer.count_error
         transfer_object.object_count_gcp = transfer.object_count_gcp
         transfer_object.bytes_used_gcp = transfer.bytes_used_gcp
         transfer_object.save()
@@ -264,6 +264,13 @@ class SynchronizeProjects():
         for obj in objects:
             if obj.get('subdir'):
                 prefix = obj.get('subdir')
+
+                if not prefix:
+                    self.app.logger.info("[{}] 500 PUT folder '{}/None': Prefix None".format(
+                        transfer_object.project_name,
+                        container
+                    ))
+                    continue
 
                 blob = bucket.blob('{}/{}'.format(container, prefix))
                 blob.upload_from_string('',
@@ -282,7 +289,7 @@ class SynchronizeProjects():
 
                 if self.flush_object == 0:
                     transfer_object.last_object = transfer.last_object
-                    transfer_object.get_error = transfer.get_error
+                    transfer_object.count_error = transfer.count_error
                     transfer_object.object_count_gcp = transfer.object_count_gcp
                     transfer_object.bytes_used_gcp = transfer.bytes_used_gcp
                     transfer_object.save()
@@ -333,7 +340,15 @@ class SynchronizeProjects():
                             self.swift = Swift(self.conn, self.project_id)
                             headers, content = self.swift.get_object(container, obj.get('name'))
                         except Exception as err:
-                            transfer.get_error += 1
+                            transfer.count_error += 1
+                            obj_path = "{}/{}".format(container, obj.get('name'))
+
+                            transfer_error = TransferProjectError(
+                                object_error=obj_path,
+                                transfer_project_id=transfer_object.id
+                            )
+                            transfer_error.save()
+
                             self.app.logger.error("[{}] {} Get object '{}/{}': {}".format(
                                 transfer_object.project_name,
                                 err.http_status,
@@ -343,7 +358,15 @@ class SynchronizeProjects():
                             ))
                             continue
                     except Exception as err:
-                        transfer.get_error += 1
+                        transfer.count_error += 1
+                        obj_path = "{}/{}".format(container, obj.get('name'))
+
+                        transfer_error = TransferProjectError(
+                            object_error=obj_path,
+                            transfer_project_id=transfer_object.id
+                        )
+                        transfer_error.save()
+
                         self.app.logger.error("[{}] {} Get object '{}/{}': {}".format(
                             transfer_object.project_name,
                             err.http_status,
@@ -392,13 +415,16 @@ class SynchronizeProjects():
                         content,
                         content_type=obj.get('content_type'),
                         num_retries=3,
-                        timeout=30
+                        timeout=900
                     )
-                    self.app.logger.info("[{}] 201 PUT object '{}/{}': Created".format(
+                    self.app.logger.info("[{}] 201 PUT object '{}' {} {}: Created".format(
                         transfer_object.project_name,
-                        container,
-                        obj.get('name')
+                        obj_path,
+                        obj.get('content_type'),
+                        len(content)
                     ))
+
+                    content = None
 
                     transfer.object_count_gcp += 1
                     transfer.bytes_used_gcp += obj.get('bytes')
@@ -407,7 +433,7 @@ class SynchronizeProjects():
 
                     if self.flush_object == 0:
                         transfer_object.last_object = transfer.last_object
-                        transfer_object.get_error = transfer.get_error
+                        transfer_object.count_error = transfer.count_error
                         transfer_object.object_count_gcp = transfer.object_count_gcp
                         transfer_object.bytes_used_gcp = transfer.bytes_used_gcp
                         transfer_object.save()
@@ -420,6 +446,7 @@ class SynchronizeProjects():
         ctx.push()
 
         bucket = None
+        error = False
 
         if self.bucket:
             bucket = self.bucket
@@ -460,7 +487,7 @@ class SynchronizeProjects():
                     container.get('name'),
                     err.http_reason
                 ))
-                return []
+                error = True
         except Exception as err:
             app.logger.error("[{}] {} Get container '{}': {}".format(
                 self.project_name,
@@ -468,45 +495,46 @@ class SynchronizeProjects():
                 container.get('name'),
                 err.http_reason
             ))
-            return []
+            error = True
 
-        blob = bucket.blob(container.get('name') + '/')
-        metadata = {}
+        if not error:
+            blob = bucket.blob(container.get('name') + '/')
+            metadata = {}
 
-        for item in meta.items():
-            key, value = item
-            key = key.lower()
-            prefix = key.split('x-container-meta-')
+            for item in meta.items():
+                key, value = item
+                key = key.lower()
+                prefix = key.split('x-container-meta-')
 
-            if len(prefix) > 1:
-                meta_key = 'meta-{}'.format(prefix[1].lower())
-                metadata[meta_key] = item[1].lower()
-                continue
+                if len(prefix) > 1:
+                    meta_key = 'meta-{}'.format(prefix[1].lower())
+                    metadata[meta_key] = item[1].lower()
+                    continue
 
-            if key == 'x-container-read':
-                metadata["read"] = value
-                continue
+                if key == 'x-container-read':
+                    metadata["read"] = value
+                    continue
 
-            if key == 'x-versions-location' or key == 'x-history-location':
-                metadata["x-versions-location"] = value
-                continue
+                if key == 'x-versions-location' or key == 'x-history-location':
+                    metadata["x-versions-location"] = value
+                    continue
 
-            if key == 'x-undelete-enabled':
-                metadata["x-container-sysmeta-undelete-enabled"] = value
-                metadata["x-undelete-enabled"] = value
-                continue
+                if key == 'x-undelete-enabled':
+                    metadata["x-container-sysmeta-undelete-enabled"] = value
+                    metadata["x-undelete-enabled"] = value
+                    continue
 
-        blob.metadata = metadata
-        blob.upload_from_string('',
-            content_type='application/directory',
-            num_retries=3,
-            timeout=30
-        )
-        app.logger.info("[{}] 201 PUT container '{}': Created".format(
-            self.project_name,
-            container.get('name')
-        ))
-        return []
+            blob.metadata = metadata
+            blob.upload_from_string('',
+                content_type='application/directory',
+                num_retries=3,
+                timeout=30
+            )
+            app.logger.info("[{}] 201 PUT container '{}': Created".format(
+                self.project_name,
+                container.get('name')
+            ))
+        return
 
     def iterator_slice(self, iterator, length):
         start = 0

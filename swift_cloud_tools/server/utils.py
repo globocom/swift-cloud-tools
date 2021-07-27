@@ -12,9 +12,9 @@ from google.cloud import storage
 
 class Transfer():
 
-    def __init__(self, last_object='', get_error=0, object_count_gcp=0, bytes_used_gcp=0):
+    def __init__(self, last_object='', count_error=0, object_count_gcp=0, bytes_used_gcp=0):
         self.last_object = last_object
-        self.get_error = get_error
+        self.count_error = count_error
         self.object_count_gcp = object_count_gcp
         self.bytes_used_gcp = bytes_used_gcp
 

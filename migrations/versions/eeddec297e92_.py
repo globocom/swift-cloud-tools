@@ -35,7 +35,7 @@ def upgrade():
     sa.Column('object_count_swift', sa.Integer(), nullable=True),
     sa.Column('bytes_used_swift', mysql.BIGINT(), nullable=True),
     sa.Column('last_object', sa.String(length=255), nullable=True),
-    sa.Column('get_error', sa.Integer(), nullable=True),
+    sa.Column('count_error', sa.Integer(), nullable=True),
     sa.Column('object_count_gcp', sa.Integer(), nullable=True),
     sa.Column('bytes_used_gcp', mysql.BIGINT(), nullable=True),
     sa.Column('initial_date', sa.DateTime(), nullable=True),

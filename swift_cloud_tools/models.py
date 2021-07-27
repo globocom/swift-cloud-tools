@@ -100,14 +100,14 @@ class TransferProject(db.Model, SaveDeleteModel):
     object_count_swift = db.Column(db.Integer, default=0, nullable=True)
     bytes_used_swift = db.Column(BIGINT(unsigned=False), default=0, nullable=True)
     last_object = db.Column(db.String(255), nullable=True)
-    get_error = db.Column(db.Integer, default=0, nullable=True)
+    count_error = db.Column(db.Integer, default=0, nullable=True)
     object_count_gcp = db.Column(db.Integer, default=0, nullable=True)
     bytes_used_gcp = db.Column(BIGINT(unsigned=False), default=0, nullable=True)
     initial_date = db.Column(db.DateTime, nullable=True)
     final_date = db.Column(db.DateTime, nullable=True)
 
     def __init__(self, project_id, project_name, environment, object_count_swift=None, 
-                 bytes_used_swift=None, last_object=None, get_error=None, object_count_gcp=None,
+                 bytes_used_swift=None, last_object=None, count_error=None, object_count_gcp=None,
                  bytes_used_gcp=None, initial_date=None, final_date=None):
         self.project_id = project_id
         self.project_name = project_name
@@ -115,7 +115,7 @@ class TransferProject(db.Model, SaveDeleteModel):
         self.object_count_swift = object_count_swift
         self.bytes_used_swift = bytes_used_swift
         self.last_object = last_object
-        self.get_error = get_error
+        self.count_error = count_error
         self.object_count_gcp = object_count_gcp
         self.bytes_used_gcp = bytes_used_gcp
         self.initial_date = initial_date
@@ -149,6 +149,34 @@ class TransferProject(db.Model, SaveDeleteModel):
         if status == 200:
             return "Transfer project '{}' environment '{}' deleted".format(
                 self.project_name, self.environment), status
+
+        return msg, status
+
+
+class TransferProjectError(db.Model, SaveDeleteModel):
+    id = db.Column(db.Integer, primary_key=True)
+    object_error = db.Column(db.String(255), nullable=False)
+    transfer_project_id = db.Column(db.Integer, db.ForeignKey('transfer_project.id'))
+
+    def __init__(self, object_error=None, transfer_project_id=None):
+        self.object_error = object_error
+        self.transfer_project_id = transfer_project_id
+
+    def save(self):
+        msg, status = SaveDeleteModel.save(self)
+
+        if status == 201:
+            return "Transfer project error '{}' - {} created".format(
+                self.object_error, self.transfer_project_id), status
+
+        return msg, status
+
+    def delete(self):
+        msg, status = SaveDeleteModel.delete(self)
+
+        if status == 200:
+            return "Transfer project error '{}' - {} deleted".format(
+                self.object_error, self.transfer_project_id), status
 
         return msg, status
 
