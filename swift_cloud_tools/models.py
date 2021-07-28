@@ -233,7 +233,12 @@ class ContainerInfo(db.Model, SaveDeleteModel):
             bytes_used += item.bytes_used
             object_count += item.object_count
             if list_containers:
-                containers.append(item.container_name)
+                containers.append({
+                    'name': item.container_name,
+                    'count': item.object_count,
+                    'bytes': item.bytes_used,
+                    'last_modified': item.updated.isoformat()
+                })
 
         return {
             'container_count': data.count(),
