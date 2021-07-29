@@ -75,7 +75,8 @@ class ContainerInfoByAccount(Resource):
     
     @is_authenticated
     def get(self, project_id):
-        acc_data = ContainerInfo.account_data(project_id)
+        list_containers = request.args.get('list_containers')
+        acc_data = ContainerInfo.account_data(project_id, list_containers)
 
         if not acc_data:
             return {}, 404

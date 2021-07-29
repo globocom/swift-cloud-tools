@@ -219,7 +219,7 @@ class ContainerInfo(db.Model, SaveDeleteModel):
         else:
             return None
 
-    def account_data(project_id):
+    def account_data(project_id, list_containers=False):
         data = ContainerInfo.query.filter(ContainerInfo.project_id == project_id)
 
         if data.count() == 0:
@@ -227,13 +227,17 @@ class ContainerInfo(db.Model, SaveDeleteModel):
 
         bytes_used = 0
         object_count = 0
+        containers = []
 
         for item in data:
             bytes_used += item.bytes_used
             object_count += item.object_count
+            if list_containers:
+                containers.append(item.container_name)
 
         return {
             'container_count': data.count(),
             'bytes_used': bytes_used,
-            'object_count': object_count
+            'object_count': object_count,
+            'containers': containers
         }
