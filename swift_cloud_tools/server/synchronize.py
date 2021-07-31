@@ -29,7 +29,6 @@ class SynchronizeProjects():
     def __init__(self, project_id):
         self.project_id = project_id
         self.project_name = None
-        self.bucket = None
 
         self.transfer_object = TransferProject.find_transfer_project(project_id)
 
@@ -39,12 +38,13 @@ class SynchronizeProjects():
         self.keystone = Keystone()
         self.conn = self.keystone.get_keystone_connection()
         self.swift = Swift(self.conn, project_id)
+        self.FLUSH_OBJECT = int(os.environ.get("FLUSH_OBJECT", "1000"))
 
     def synchronize(self, project_id):
         """Get project in swift."""
 
         self.project_id = project_id
-        self.flush_object = int(os.environ.get("FLUSH_OBJECT", "1000"))
+        self.flush_object = self.FLUSH_OBJECT
 
         self.app = create_app('config/{}_config.py'.format(os.environ.get("FLASK_CONFIG")))
         ctx = self.app.app_context()
@@ -74,17 +74,17 @@ class SynchronizeProjects():
         gcp_client = google.get_gcp_client()
         account = 'auth_{}'.format(project_id)
         try:
-            self.bucket = gcp_client.get_bucket(
+            bucket = gcp_client.get_bucket(
                 account,
                 timeout=30
             )
         except NotFound:
-            self.bucket = gcp_client.create_bucket(
+            bucket = gcp_client.create_bucket(
                 account,
                 location=BUCKET_LOCATION
             )
-            self.bucket.iam_configuration.uniform_bucket_level_access_enabled = False
-            self.bucket.patch()
+            bucket.iam_configuration.uniform_bucket_level_access_enabled = False
+            bucket.patch()
         except Exception as err:
             self.app.logger.info('[{}] 500 GET Create bucket: {}'.format(
                 transfer_object.project_name,
@@ -92,13 +92,28 @@ class SynchronizeProjects():
             ))
             return Response(err, mimetype="text/plain", status=500)
 
+        if transfer_object.last_object:
+            resume = True
+
         try:
-            account_stat, containers = self.swift.get_account()
+            if resume:
+                container_last = transfer_object.last_object.split('/')[0]
+                account_stat, containers = self.swift.get_account(marker=container_last)
+                account_stat, containers = self.swift.get_account(end_marker=containers[0].get('name'))
+                account_stat, containers = self.swift.get_account(marker=containers[len(containers) - 2].get('name'))
+            else:
+                account_stat, containers = self.swift.get_account()
         except requests.exceptions.ConnectionError:
             try:
                 self.conn = self.keystone.get_keystone_connection()
                 self.swift = Swift(self.conn, project_id)
-                account_stat, containers = self.swift.get_account()
+                if resume:
+                    container_last = transfer_object.last_object.split('/')[0]
+                    account_stat, containers = self.swift.get_account(marker=container_last)
+                    account_stat, containers = self.swift.get_account(end_marker=containers[0].get('name'))
+                    account_stat, containers = self.swift.get_account(marker=containers[len(containers) - 2].get('name'))
+                else:
+                    account_stat, containers = self.swift.get_account()
             except Exception as err:
                 self.app.logger.info("[{}] {} GET account 'AUTH_{}': {}".format(
                     transfer_object.project_name,
@@ -119,6 +134,7 @@ class SynchronizeProjects():
         object_count = account_stat.get('x-account-object-count')
         bytes_used = account_stat.get('x-account-bytes-used')
 
+        transfer_object.container_count_swift = int(container_count)
         transfer_object.object_count_swift = int(object_count)
         transfer_object.bytes_used_swift = int(bytes_used)
         transfer_object.save()
@@ -130,15 +146,12 @@ class SynchronizeProjects():
         self.app.logger.info('[{}] object_count: {}'.format(transfer_object.project_name, object_count))
         self.app.logger.info('[{}] bytes_used: {}'.format(transfer_object.project_name, bytes_used))
 
-        if transfer_object.last_object and len(containers) > 0:
+        if transfer_object:
             transfer.last_object = transfer_object.last_object
             transfer.count_error = transfer_object.count_error
+            transfer.container_count_gcp = transfer_object.container_count_gcp
             transfer.object_count_gcp = transfer_object.object_count_gcp
             transfer.bytes_used_gcp = transfer_object.bytes_used_gcp
-            container = transfer_object.last_object.split('/')[0]
-            index = [i for i, x in enumerate(containers) if x.get('name') == container][0]
-            containers = containers[index:]
-            resume = True
 
         containers_copy = containers.copy()
 
@@ -146,12 +159,14 @@ class SynchronizeProjects():
         self.app.logger.info('[{}] Create all containers'.format(transfer_object.project_name))
 
         while (len(containers_copy) > 0):
-            pool = multiprocessing.Pool(processes=6)
+            pool = multiprocessing.Pool(processes=10)
             foo = SynchronizeProjects(self.project_id)
 
-            for _ in pool.imap_unordered(
-                    foo.send_container, self.iterator_slice(containers_copy, 1)):
-                pass
+            for count in pool.imap_unordered(
+                    foo.send_container, self.iterator_slice(containers_copy, self.FLUSH_OBJECT)):
+                transfer.container_count_gcp += count
+                transfer_object.container_count_gcp = transfer.container_count_gcp
+                transfer_object.save()
 
             pool.close()
 
@@ -248,7 +263,7 @@ class SynchronizeProjects():
             if len(objects) > 0:
                 self._get_container(
                     container.get('name'),
-                    self.bucket,
+                    bucket,
                     transfer_object,
                     transfer,
                     objects
@@ -256,6 +271,7 @@ class SynchronizeProjects():
 
         transfer_object.last_object = transfer.last_object
         transfer_object.count_error = transfer.count_error
+        transfer_object.container_count_gcp = transfer.container_count_gcp
         transfer_object.object_count_gcp = transfer.object_count_gcp
         transfer_object.bytes_used_gcp = transfer.bytes_used_gcp
         transfer_object.save()
@@ -289,12 +305,9 @@ class SynchronizeProjects():
 
                 if self.flush_object == 0:
                     transfer_object.last_object = transfer.last_object
-                    transfer_object.count_error = transfer.count_error
-                    transfer_object.object_count_gcp = transfer.object_count_gcp
-                    transfer_object.bytes_used_gcp = transfer.bytes_used_gcp
                     transfer_object.save()
 
-                    self.flush_object = int(os.environ.get("FLUSH_OBJECT", "1000"))
+                    self.flush_object = self.FLUSH_OBJECT
 
                 try:
                     meta, objects = self.swift.get_container(container, prefix=prefix)
@@ -438,103 +451,105 @@ class SynchronizeProjects():
                         transfer_object.bytes_used_gcp = transfer.bytes_used_gcp
                         transfer_object.save()
 
-                        self.flush_object = int(os.environ.get("FLUSH_OBJECT", "1000"))
+                        self.flush_object = self.FLUSH_OBJECT
 
-    def send_container(self, container):
+    def send_container(self, containers):
         app = create_app('config/{}_config.py'.format(os.environ.get("FLASK_CONFIG")))
         ctx = app.app_context()
         ctx.push()
 
-        bucket = None
         error = False
+        count = 0
+        container_name = None
 
-        if self.bucket:
-            bucket = self.bucket
-        else:
-            google = Google()
-            gcp_client = google.get_gcp_client()
-            account = 'auth_{}'.format(self.project_id)
+        google = Google()
+        gcp_client = google.get_gcp_client()
+        account = 'auth_{}'.format(self.project_id)
+
+        try:
+            bucket = gcp_client.get_bucket(
+                account,
+                timeout=30
+            )
+        except requests.exceptions.ReadTimeout as err:
             try:
-                self.bucket = bucket = gcp_client.get_bucket(
+                bucket = gcp_client.get_bucket(
                     account,
                     timeout=30
                 )
-            except requests.exceptions.ReadTimeout as err:
+            except Exception as err:
+                app.logger.error("[{}] {} Get bucket '{}': {}".format(
+                    self.project_name,
+                    err.http_status,
+                    account,
+                    err.http_reason
+                ))
+
+        for container in containers:
+            try:
+                container_name = container.get('name')
+                meta, objects = self.swift.get_container(container_name)
+            except requests.exceptions.ConnectionError:
                 try:
-                    self.bucket = bucket = gcp_client.get_bucket(
-                        account,
-                        timeout=30
-                    )
+                    self.conn = self.keystone.get_keystone_connection()
+                    self.swift = Swift(self.conn, self.project_id)
+                    meta, objects = self.swift.get_container(container_name)
                 except Exception as err:
-                    app.logger.error("[{}] {} Get bucket '{}': {}".format(
+                    app.logger.error("[{}] {} Get container '{}': {}".format(
                         self.project_name,
                         err.http_status,
-                        account,
+                        container_name,
                         err.http_reason
                     ))
-
-        try:
-            meta, objects = self.swift.get_container(container.get('name'))
-        except requests.exceptions.ConnectionError:
-            try:
-                self.conn = self.keystone.get_keystone_connection()
-                self.swift = Swift(self.conn, self.project_id)
-                meta, objects = self.swift.get_container(container.get('name'))
+                    error = True
             except Exception as err:
                 app.logger.error("[{}] {} Get container '{}': {}".format(
                     self.project_name,
                     err.http_status,
-                    container.get('name'),
+                    container_name,
                     err.http_reason
                 ))
                 error = True
-        except Exception as err:
-            app.logger.error("[{}] {} Get container '{}': {}".format(
-                self.project_name,
-                err.http_status,
-                container.get('name'),
-                err.http_reason
-            ))
-            error = True
 
-        if not error:
-            blob = bucket.blob(container.get('name') + '/')
-            metadata = {}
+            if not error:
+                blob = bucket.blob(container_name + '/')
+                metadata = {}
 
-            for item in meta.items():
-                key, value = item
-                key = key.lower()
-                prefix = key.split('x-container-meta-')
+                for item in meta.items():
+                    key, value = item
+                    key = key.lower()
+                    prefix = key.split('x-container-meta-')
 
-                if len(prefix) > 1:
-                    meta_key = 'meta-{}'.format(prefix[1].lower())
-                    metadata[meta_key] = item[1].lower()
-                    continue
+                    if len(prefix) > 1:
+                        meta_key = 'meta-{}'.format(prefix[1].lower())
+                        metadata[meta_key] = item[1].lower()
+                        continue
 
-                if key == 'x-container-read':
-                    metadata["read"] = value
-                    continue
+                    if key == 'x-container-read':
+                        metadata["read"] = value
+                        continue
 
-                if key == 'x-versions-location' or key == 'x-history-location':
-                    metadata["x-versions-location"] = value
-                    continue
+                    if key == 'x-versions-location' or key == 'x-history-location':
+                        metadata["x-versions-location"] = value
+                        continue
 
-                if key == 'x-undelete-enabled':
-                    metadata["x-container-sysmeta-undelete-enabled"] = value
-                    metadata["x-undelete-enabled"] = value
-                    continue
+                    if key == 'x-undelete-enabled':
+                        metadata["x-container-sysmeta-undelete-enabled"] = value
+                        metadata["x-undelete-enabled"] = value
+                        continue
 
-            blob.metadata = metadata
-            blob.upload_from_string('',
-                content_type='application/directory',
-                num_retries=3,
-                timeout=30
-            )
-            app.logger.info("[{}] 201 PUT container '{}': Created".format(
-                self.project_name,
-                container.get('name')
-            ))
-        return
+                blob.metadata = metadata
+                blob.upload_from_string('',
+                    content_type='application/directory',
+                    num_retries=3,
+                    timeout=30
+                )
+                app.logger.info("[{}] 201 PUT container '{}': Created".format(
+                    self.project_name,
+                    container_name
+                ))
+                count +=1
+        return count
 
     def iterator_slice(self, iterator, length):
         start = 0
@@ -546,4 +561,4 @@ class SynchronizeProjects():
             end += length
             if not res:
                 break
-            yield res[0]
+            yield res

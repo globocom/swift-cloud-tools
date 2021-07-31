@@ -79,12 +79,13 @@ class Swift():
 
         return resp['status'], resp['reason']
 
-    def get_account(self, marker=None):
+    def get_account(self, marker=None, end_marker=None):
         try:
             return swift_client.get_account(
                 self.storage_url,
                 self.conn.auth_token,
                 marker=marker,
+                end_marker=end_marker,
                 full_listing=False,
                 http_conn=self.http_conn,
                 headers={'X-Cloud-Bypass': self.x_cloud_bypass}
