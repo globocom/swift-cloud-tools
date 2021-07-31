@@ -30,8 +30,9 @@ class ContainerInfoAdd(Resource):
 
         project_id = params.get("project_id")
         container_name = params.get("container_name")
-        size = int(params.get("size"))
-        remove = params.get("remove", False)
+        size = int(params.get("size", 0))
+        remove = bool(params.get("remove", False))
+        count = int(params.get("count", 1))
 
         current = ContainerInfo.find_container_info(project_id, container_name)
 
@@ -39,16 +40,16 @@ class ContainerInfoAdd(Resource):
             c_info = ContainerInfo(project_id=project_id,
                                    container_name=container_name,
                                    updated=datetime.utcnow())
-            c_info.object_count = 1
+            c_info.object_count = count
             c_info.bytes_used = size
             msg, status = c_info.save()
             return Response(msg, mimetype="text/plain", status=status)
 
         if remove:
-            current.object_count = max(0, current.object_count - 1)
+            current.object_count = max(0, current.object_count - count)
             current.bytes_used = max(0, current.bytes_used - size)
         else:
-            current.object_count = current.object_count + 1
+            current.object_count = current.object_count + count
             current.bytes_used = current.bytes_used + size
 
         current.updated = datetime.utcnow()
