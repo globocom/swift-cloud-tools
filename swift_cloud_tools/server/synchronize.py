@@ -130,9 +130,16 @@ class SynchronizeProjects():
             ))
             return Response(err.msg, mimetype="text/plain", status=err.http_status)
 
-        container_count = account_stat.get('x-account-container-count')
-        object_count = account_stat.get('x-account-object-count')
-        bytes_used = account_stat.get('x-account-bytes-used')
+        container_count = account_stat.get('x-account-container-count', 0)
+        object_count = account_stat.get('x-account-object-count', 0)
+        bytes_used = account_stat.get('x-account-bytes-used', 0)
+
+        bucket.labels = {
+            'container-count': container_count,
+            'object-count': object_count,
+            'bytes-used': bytes_used
+        }
+        bucket.patch()
 
         transfer_object.container_count_swift = int(container_count)
         transfer_object.object_count_swift = int(object_count)
@@ -514,6 +521,9 @@ class SynchronizeProjects():
             if not error:
                 blob = bucket.blob(container_name + '/')
                 metadata = {}
+
+                metadata['object-count'] = meta.get('x-container-object-count', 0)
+                metadata['bytes-used'] = meta.get('x-container-bytes-used', 0)
 
                 for item in meta.items():
                     key, value = item
