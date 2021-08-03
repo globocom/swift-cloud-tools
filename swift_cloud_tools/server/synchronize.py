@@ -6,12 +6,13 @@ import time
 import os
 
 from flask import Response
+from threading import Thread
 from swift_cloud_tools import create_app
 from google.cloud.exceptions import NotFound
 from swiftclient import client as swift_client
 
 from swift_cloud_tools.server.utils import Keystone, Swift, Google, Transfer
-from swift_cloud_tools.models import TransferProject, TransferProjectError
+from swift_cloud_tools.models import TransferProject, TransferProjectError, db
 
 BUCKET_LOCATION = 'SOUTHAMERICA-EAST1'
 RESERVED_META = [
@@ -201,9 +202,129 @@ class SynchronizeProjects():
                 ))
                 containers_copy = containers = []
 
+        ########################################
+
+        percentage_page = float(os.environ.get("PERCENTAGE_PAGE", "0.1"))
+        page_size = int(int(container_count) * percentage_page) or 1
+        start = 0
+        end = page_size
+        parts = []
+
+        while True:
+            res = list(itertools.islice(containers, start, end))
+            start += page_size
+            end += page_size
+            if not res:
+                break
+            parts.append(res)
+
+        threads = [None] * len(parts)
+        results = [None] * len(parts)
+        for i in range(len(threads)):
+            threads[i] = Thread(target=self.mount_export_tree_async, args=(parts[i], bucket, transfer, transfer_object, resume, results, i))
+            threads[i].start()
+        for i in range(len(threads)):
+            threads[i].join()
+        for result in results:
+            self.app.logger.info("[{}] Finished page container': {}".format(
+                transfer_object.project_name,
+                result
+            ))
+
+        ########################################
+
+        # for container in containers:
+        #     self.app.logger.info('[{}] ----------'.format(transfer_object.project_name))
+        #     self.app.logger.info('[{}] Container: {}'.format(
+        #         transfer_object.project_name,
+        #         container.get('name')
+        #     ))
+
+        #     # if container.get('bytes') > 0:
+        #     if resume:
+        #         prefix = '/'.join(transfer.last_object.split('/')[1:-1]) + '/'
+        #         marker = '/'.join(transfer.last_object.split('/')[1:])
+
+        #     try:
+        #         if resume:
+        #             meta, objects = self.swift.get_container(
+        #                 container.get('name'),
+        #                 prefix=prefix,
+        #                 marker=marker
+        #             )
+        #             if len(objects) == 0:
+        #                 break
+        #         else:
+        #             meta, objects = self.swift.get_container(container.get('name'))
+        #     except requests.exceptions.ConnectionError:
+        #         try:
+        #             self.conn = self.keystone.get_keystone_connection()
+        #             self.swift = Swift(self.conn, project_id)
+        #             if resume:
+        #                 meta, objects = self.swift.get_container(
+        #                     container.get('name'),
+        #                     prefix=prefix,
+        #                     marker=marker
+        #                 )
+        #                 if len(objects) == 0:
+        #                     break
+        #             else:
+        #                 meta, objects = self.swift.get_container(container.get('name'))
+        #         except Exception as err:
+        #             if resume:
+        #                 path = '{}/{}'.format(container.get('name'), prefix)
+        #             else:
+        #                 path = container.get('name')
+
+        #             self.app.logger.error("[{}] {} Get container '{}': {}".format(
+        #                 transfer_object.project_name,
+        #                 err.http_status,
+        #                 path,
+        #                 err.http_reason
+        #             ))
+        #             continue
+        #     except Exception as err:
+        #         if resume:
+        #             path = '{}/{}'.format(container.get('name'), prefix)
+        #         else:
+        #             path = container.get('name')
+
+        #         self.app.logger.error("[{}] {} Get container '{}': {}".format(
+        #             transfer_object.project_name,
+        #             err.http_status,
+        #             path,
+        #             err.http_reason
+        #         ))
+        #         continue
+
+        #     resume = False
+
+        #     if len(objects) > 0:
+        #         self._get_container(
+        #             container.get('name'),
+        #             bucket,
+        #             transfer_object,
+        #             transfer,
+        #             objects
+        #         )
+
+        # transfer_object.last_object = transfer.last_object
+        # transfer_object.count_error = transfer.count_error
+        # transfer_object.container_count_gcp = transfer.container_count_gcp
+        # transfer_object.object_count_gcp = transfer.object_count_gcp
+        # transfer_object.bytes_used_gcp = transfer.bytes_used_gcp
+        # transfer_object.save()
+
+        ########################################
+
+    def mount_export_tree_async(self, containers, bucket, transfer, transfer_object, resume, result, index):
+        app = create_app('config/{}_config.py'.format(os.environ.get("FLASK_CONFIG")))
+        ctx = app.app_context()
+        ctx.push()
+
         for container in containers:
-            self.app.logger.info('[{}] ----------'.format(transfer_object.project_name))
-            self.app.logger.info('[{}] Container: {}'.format(
+            app.logger.info('[{}] ----------'.format(transfer_object.project_name))
+            app.logger.info('[{}] Container: {}'.format(
                 transfer_object.project_name,
                 container.get('name')
             ))
@@ -244,7 +365,7 @@ class SynchronizeProjects():
                     else:
                         path = container.get('name')
 
-                    self.app.logger.error("[{}] {} Get container '{}': {}".format(
+                    app.logger.error("[{}] {} Get container '{}': {}".format(
                         transfer_object.project_name,
                         err.http_status,
                         path,
@@ -257,7 +378,7 @@ class SynchronizeProjects():
                 else:
                     path = container.get('name')
 
-                self.app.logger.error("[{}] {} Get container '{}': {}".format(
+                app.logger.error("[{}] {} Get container '{}': {}".format(
                     transfer_object.project_name,
                     err.http_status,
                     path,
@@ -276,12 +397,21 @@ class SynchronizeProjects():
                     objects
                 )
 
-        transfer_object.last_object = transfer.last_object
-        transfer_object.count_error = transfer.count_error
-        transfer_object.container_count_gcp = transfer.container_count_gcp
-        transfer_object.object_count_gcp = transfer.object_count_gcp
-        transfer_object.bytes_used_gcp = transfer.bytes_used_gcp
-        transfer_object.save()
+        app.logger.error("[{}] 201 Finished container '{}'".format(
+            transfer_object.project_name,
+            container.get('name')
+        ))
+
+        db.session.begin()
+        transfer_project = TransferProject.query.filter_by(project_id=transfer_object.project_id).first()
+        transfer_project.last_object = transfer.last_object
+        transfer_project.count_error = transfer.count_error
+        transfer_project.object_count_gcp = transfer.object_count_gcp
+        transfer_project.bytes_used_gcp = transfer.bytes_used_gcp
+        db.session.commit()
+
+        result[index] = 'ok'
+
 
     def _get_container(self, container, bucket, transfer_object, transfer, objects):
         for obj in objects:
