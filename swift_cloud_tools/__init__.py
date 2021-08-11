@@ -6,6 +6,7 @@ from flask import Flask
 from flask_cors import CORS
 from flask_migrate import Migrate
 from logging.handlers import RotatingFileHandler
+from werkzeug.contrib.fixers import ProxyFix
 
 from swift_cloud_tools.models import db
 from swift_cloud_tools.api.v1.api import blueprint as api_v1
@@ -40,5 +41,5 @@ def create_app(config_module=None):
     return app
 
 def app_factory(global_config, **local_conf):
-	wsgi_app = create_app()
-	return wsgi_app
+    wsgi_app = ProxyFix(create_app())
+    return wsgi_app

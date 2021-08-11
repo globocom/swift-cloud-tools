@@ -1,8 +1,8 @@
 # -*- coding: utf-8 -*-
-import multiprocessing
 import itertools
 import requests
 import time
+import json
 import os
 
 from flask import Response
@@ -12,6 +12,7 @@ from google.cloud.exceptions import NotFound
 from google.auth.exceptions import TransportError
 from swiftclient import client as swift_client
 from keystoneauth1.exceptions.auth import AuthorizationFailure
+from http.client import IncompleteRead
 
 from swift_cloud_tools.server.utils import Keystone, Swift, Google, Transfer
 from swift_cloud_tools.models import TransferProject, TransferProjectError, db
@@ -99,42 +100,28 @@ class SynchronizeProjects():
             resume = True
 
         try:
-            if resume:
-                container_last = transfer_object.last_object.split('/')[0]
-                account_stat, containers = self.swift.get_account(marker=container_last)
-                account_stat, containers = self.swift.get_account(end_marker=containers[0].get('name'))
-                account_stat, containers = self.swift.get_account(marker=containers[len(containers) - 2].get('name'))
-            else:
-                account_stat, containers = self.swift.get_account()
+            account_stat, containers = self.swift.get_account()
         except requests.exceptions.ConnectionError:
             try:
                 self.conn = self.keystone.get_keystone_connection()
                 self.swift = Swift(self.conn, project_id)
-                if resume:
-                    container_last = transfer_object.last_object.split('/')[0]
-                    account_stat, containers = self.swift.get_account(marker=container_last)
-                    account_stat, containers = self.swift.get_account(end_marker=containers[0].get('name'))
-                    account_stat, containers = self.swift.get_account(marker=containers[len(containers) - 2].get('name'))
-                else:
-                    account_stat, containers = self.swift.get_account()
+                account_stat, containers = self.swift.get_account()
             except AuthorizationFailure:
                 app.logger.error("[{}] 500 GET account 'AUTH_{}': Keystone authorization failure".format(
                     transfer_object.project_name,
                     project_id
                 ))
             except Exception as err:
-                self.app.logger.info("[{}] {} GET account 'AUTH_{}': {}".format(
+                self.app.logger.info("[{}] 500 GET account 'AUTH_{}': {}".format(
                     transfer_object.project_name,
-                    err.http_status,
                     project_id,
-                    err.http_reason
+                    err
                 ))
         except Exception as err:
-            self.app.logger.info("[{}] {} GET account 'AUTH_{}': {}".format(
+            self.app.logger.info("[{}] 500 GET account 'AUTH_{}': {}".format(
                 transfer_object.project_name,
-                err.http_status,
                 project_id,
-                err.http_reason
+                err
             ))
             return Response(err.msg, mimetype="text/plain", status=err.http_status)
 
@@ -168,58 +155,90 @@ class SynchronizeProjects():
             transfer.object_count_gcp = transfer_object.object_count_gcp
             transfer.bytes_used_gcp = transfer_object.bytes_used_gcp
 
-        containers_copy = containers.copy()
+        ########################################
+        #              Containers              #
+        ########################################
 
-        self.app.logger.info('[{}] ---------------------'.format(transfer_object.project_name))
-        self.app.logger.info('[{}] Create all containers'.format(transfer_object.project_name))
+        if not resume:
+            containers_copy = containers.copy()
 
-        while (len(containers_copy) > 0):
-            pool = multiprocessing.Pool(processes=10)
-            foo = SynchronizeProjects(self.project_id)
+            self.app.logger.info('[{}] ---------------------'.format(transfer_object.project_name))
+            self.app.logger.info('[{}] Create all containers'.format(transfer_object.project_name))
 
-            for count in pool.imap_unordered(
-                    foo.send_container, self.iterator_slice(containers_copy, self.FLUSH_OBJECT)):
-                transfer.container_count_gcp += count
+            while (len(containers_copy) > 0):
+                page_size = 1
+                parts = []
 
-                db.session.begin()
-                transfer_project = db.session.query(TransferProject).filter_by(project_id=transfer_object.project_id).first()
-                transfer_object.container_count_gcp = transfer.container_count_gcp
-                time.sleep(0.1)
-                db.session.commit()
+                if len(containers_copy) > 35:
+                    percentage_page = float(os.environ.get("PERCENTAGE_PAGE", "0.1"))
+                    page_size = int(len(containers_copy) * percentage_page) or 1
 
-                transfer_project = None
+                start = 0
+                end = page_size
 
-            pool.close()
+                while True:
+                    res = list(itertools.islice(containers_copy, start, end))
+                    start += page_size
+                    end += page_size
+                    if not res:
+                        break
+                    parts.append(res)
 
-            try:
-                account_stat, containers_copy = self.swift.get_account(marker=containers[-1].get('name'))
-            except requests.exceptions.ConnectionError:
-                try:
-                    self.conn = self.keystone.get_keystone_connection()
-                    self.swift = Swift(self.conn, project_id)
-                    account_stat, containers_copy = self.swift.get_account(marker=containers[-1].get('name'))
-                except AuthorizationFailure:
-                    app.logger.error("[{}] 500 Get account 'AUTH_{}': Keystone authorization failure".format(
-                        transfer_object.project_name,
-                        project_id
+                threads = [None] * len(parts)
+                results = [None] * len(parts)
+                counts = [0] * len(parts)
+
+                for i in range(len(threads)):
+                    time.sleep(0.5)
+                    threads[i] = Thread(target=self.send_container, args=(self.app, gcp_client, parts[i], results, counts, i))
+                    threads[i].start()
+                for i in range(len(threads)):
+                    threads[i].join()
+                for i, result in enumerate(results):
+                    time.sleep(0.1)
+                    transfer.container_count_gcp += counts[i]
+
+                    db.session.begin()
+                    transfer_project = db.session.query(TransferProject).filter_by(project_id=transfer_object.project_id).first()
+                    transfer_project.container_count_gcp = transfer.container_count_gcp
+                    time.sleep(0.1)
+                    db.session.commit()
+
+                    transfer_project = None
+                    self.app.logger.info("[{}] Finished page container': {} - {}".format(
+                        transfer_object.project_name, i,
+                        counts[i]
                     ))
+
+                try:
+                    account_stat, containers_copy = self.swift.get_account(marker=containers_copy[-1].get('name'))
+                except requests.exceptions.ConnectionError:
+                    try:
+                        self.conn = self.keystone.get_keystone_connection()
+                        self.swift = Swift(self.conn, project_id)
+                        account_stat, containers_copy = self.swift.get_account(marker=containers_copy[-1].get('name'))
+                    except AuthorizationFailure:
+                        app.logger.error("[{}] 500 Get account 'AUTH_{}': Keystone authorization failure".format(
+                            transfer_object.project_name,
+                            project_id
+                        ))
+                    except Exception as err:
+                        self.app.logger.info("[{}] 500 GET account 'AUTH_{}': {}".format(
+                            transfer_object.project_name,
+                            project_id,
+                            err
+                        ))
+                        containers_copy = containers = []
                 except Exception as err:
-                    self.app.logger.info("[{}] {} GET account 'AUTH_{}': {}".format(
+                    self.app.logger.info("[{}] 500 GET account 'AUTH_{}': {}".format(
                         transfer_object.project_name,
-                        err.http_status,
                         project_id,
-                        err.http_reason
+                        err
                     ))
                     containers_copy = containers = []
-            except Exception as err:
-                self.app.logger.info("[{}] {} GET account 'AUTH_{}': {}".format(
-                    transfer_object.project_name,
-                    err.http_status,
-                    project_id,
-                    err.http_reason
-                ))
-                containers_copy = containers = []
 
+        ########################################
+        #               Objects                #
         ########################################
 
         page_size = 1
@@ -242,109 +261,161 @@ class SynchronizeProjects():
 
         threads = [None] * len(parts)
         results = [None] * len(parts)
+
         for i in range(len(threads)):
             time.sleep(0.5)
-            threads[i] = Thread(target=self.send_object, args=(parts[i], bucket, transfer, transfer_object, resume, results, i))
+            threads[i] = Thread(target=self.send_object, args=(parts[i], bucket, transfer, transfer_object, results, i))
             threads[i].start()
         for i in range(len(threads)):
             threads[i].join()
-        for result in results:
+        for i, result in enumerate(results):
             time.sleep(0.1)
-            self.app.logger.info("[{}] Finished page container': {}".format(
-                transfer_object.project_name,
+            self.app.logger.info("[{}] Finished page container': {} - {}".format(
+                transfer_object.project_name, i,
                 result
             ))
 
-        ########################################
 
-        # for container in containers:
-        #     self.app.logger.info('[{}] ----------'.format(transfer_object.project_name))
-        #     self.app.logger.info('[{}] Container: {}'.format(
-        #         transfer_object.project_name,
-        #         container.get('name')
-        #     ))
+    def send_container(self, app, gcp_client, containers, result, counts, index):
+        error = False
+        container_name = None
+        account = 'auth_{}'.format(self.project_id)
 
-        #     # if container.get('bytes') > 0:
-        #     if resume:
-        #         prefix = '/'.join(transfer.last_object.split('/')[1:-1]) + '/'
-        #         marker = '/'.join(transfer.last_object.split('/')[1:])
+        try:
+            bucket = gcp_client.get_bucket(
+                account,
+                timeout=30
+            )
+        except TransportError:
+            try:
+                bucket = gcp_client.get_bucket(
+                    account,
+                    timeout=30
+                )
+            except Exception as err:
+                app.logger.error("[{}] 500 Get bucket '{}': {}".format(
+                    self.project_name,
+                    account,
+                    err
+                ))
+        except requests.exceptions.ReadTimeout as err:
+            try:
+                bucket = gcp_client.get_bucket(
+                    account,
+                    timeout=30
+                )
+            except Exception as err:
+                app.logger.error("[{}] 500 Get bucket '{}': {}".format(
+                    self.project_name,
+                    account,
+                    err
+                ))
+        except Exception as err:
+            app.logger.error('[{}] 500 GET bucket: {}'.format(
+                self.project_name,
+                err
+            ))
 
-        #     try:
-        #         if resume:
-        #             meta, objects = self.swift.get_container(
-        #                 container.get('name'),
-        #                 prefix=prefix,
-        #                 marker=marker
-        #             )
-        #             if len(objects) == 0:
-        #                 break
-        #         else:
-        #             meta, objects = self.swift.get_container(container.get('name'))
-        #     except requests.exceptions.ConnectionError:
-        #         try:
-        #             self.conn = self.keystone.get_keystone_connection()
-        #             self.swift = Swift(self.conn, project_id)
-        #             if resume:
-        #                 meta, objects = self.swift.get_container(
-        #                     container.get('name'),
-        #                     prefix=prefix,
-        #                     marker=marker
-        #                 )
-        #                 if len(objects) == 0:
-        #                     break
-        #             else:
-        #                 meta, objects = self.swift.get_container(container.get('name'))
-        #         except Exception as err:
-        #             if resume:
-        #                 path = '{}/{}'.format(container.get('name'), prefix)
-        #             else:
-        #                 path = container.get('name')
+        for container in containers:
+            try:
+                container_name = container.get('name')
+                meta, objects = self.swift.get_container(container_name)
+            except requests.exceptions.ConnectionError:
+                try:
+                    self.conn = self.keystone.get_keystone_connection()
+                    self.swift = Swift(self.conn, self.project_id)
+                    meta, objects = self.swift.get_container(container_name)
+                except AuthorizationFailure:
+                    app.logger.error("[{}] 500 Get container '{}': Keystone authorization failure".format(
+                        self.project_name,
+                        container_name
+                    ))
+                    error = True
+                except Exception as err:
+                    app.logger.error("[{}] 500 Get container '{}': {}".format(
+                        self.project_name,
+                        container_name,
+                        err
+                    ))
+                    error = True
+            except json.decoder.JSONDecodeError:
+                try:
+                    meta, objects = self.swift.get_container(container_name)
+                except Exception as e:
+                    app.logger.error("[{}] 500 Get container '{}': {}".format(
+                        self.project_name,
+                        container_name,
+                        err
+                    ))
+                    error = True
+            except Exception as err:
+                app.logger.error("[{}] 500 Get container '{}': {}".format(
+                    self.project_name,
+                    container_name,
+                    err
+                ))
+                error = True
 
-        #             self.app.logger.error("[{}] {} Get container '{}': {}".format(
-        #                 transfer_object.project_name,
-        #                 err.http_status,
-        #                 path,
-        #                 err.http_reason
-        #             ))
-        #             continue
-        #     except Exception as err:
-        #         if resume:
-        #             path = '{}/{}'.format(container.get('name'), prefix)
-        #         else:
-        #             path = container.get('name')
+            if not error:
+                blob = bucket.blob(container_name + '/')
+                metadata = {}
 
-        #         self.app.logger.error("[{}] {} Get container '{}': {}".format(
-        #             transfer_object.project_name,
-        #             err.http_status,
-        #             path,
-        #             err.http_reason
-        #         ))
-        #         continue
+                metadata['object-count'] = meta.get('x-container-object-count', 0)
+                metadata['bytes-used'] = meta.get('x-container-bytes-used', 0)
 
-        #     resume = False
+                for item in meta.items():
+                    key, value = item
+                    key = key.lower()
+                    prefix = key.split('x-container-meta-')
 
-        #     if len(objects) > 0:
-        #         self._get_container(
-        #             container.get('name'),
-        #             bucket,
-        #             transfer_object,
-        #             transfer,
-        #             objects
-        #         )
+                    if len(prefix) > 1:
+                        meta_key = 'meta-{}'.format(prefix[1].lower())
+                        metadata[meta_key] = item[1].lower()
+                        continue
 
-        # transfer_object.last_object = transfer.last_object
-        # transfer_object.count_error = transfer.count_error
-        # transfer_object.container_count_gcp = transfer.container_count_gcp
-        # transfer_object.object_count_gcp = transfer.object_count_gcp
-        # transfer_object.bytes_used_gcp = transfer.bytes_used_gcp
-        # transfer_object.save()
+                    if key == 'x-container-read':
+                        metadata["read"] = value
+                        continue
 
-        ########################################
+                    if key == 'x-versions-location' or key == 'x-history-location':
+                        metadata["x-versions-location"] = value
+                        continue
 
-    def send_object(self, containers, bucket, transfer, transfer_object, resume, result, index):
+                    if key == 'x-undelete-enabled':
+                        metadata["x-container-sysmeta-undelete-enabled"] = value
+                        metadata["x-undelete-enabled"] = value
+                        continue
+
+                blob.metadata = metadata
+                try:
+                    blob.upload_from_string('',
+                        content_type='application/directory',
+                        num_retries=3,
+                        timeout=30
+                    )
+
+                    # app.logger.info("[{}] 201 PUT container '{}': Created".format(
+                    #     self.project_name,
+                    #     container_name
+                    # ))
+                    counts[index] += 1
+                except requests.exceptions.ReadTimeout:
+                    app.logger.error("[{}] 500 PUT container '{}': ReadTimeout".format(
+                        self.project_name,
+                        container_name
+                    ))
+
+        time.sleep(0.1)
+        result[index] = 'ok'
+
+
+    def send_object(self, containers, bucket, transfer, transfer_object, result, index):
         app = create_app('config/{}_config.py'.format(os.environ.get("FLASK_CONFIG")))
         ctx = app.app_context()
         ctx.push()
+
+        prefix = None
+        marker = None
 
         for container in containers:
             app.logger.info('[{}] ----------'.format(transfer_object.project_name))
@@ -353,76 +424,32 @@ class SynchronizeProjects():
                 container.get('name')
             ))
 
-            # if container.get('bytes') > 0:
-            if resume:
-                prefix = '/'.join(transfer.last_object.split('/')[1:-1]) + '/'
-                marker = '/'.join(transfer.last_object.split('/')[1:])
-
             try:
-                if resume:
-                    meta, objects = self.swift.get_container(
-                        container.get('name'),
-                        prefix=prefix,
-                        marker=marker
-                    )
-                    if len(objects) == 0:
-                        break
-                else:
-                    time.sleep(0.3)
-                    meta, objects = self.swift.get_container(container.get('name'))
+                meta, objects = self.swift.get_container(container.get('name'))
             except requests.exceptions.ConnectionError:
                 try:
-                    time.sleep(0.3)
                     self.conn = self.keystone.get_keystone_connection()
                     self.swift = Swift(self.conn, project_id)
-                    if resume:
-                        meta, objects = self.swift.get_container(
-                            container.get('name'),
-                            prefix=prefix,
-                            marker=marker
-                        )
-                        if len(objects) == 0:
-                            break
-                    else:
-                        meta, objects = self.swift.get_container(container.get('name'))
+                    meta, objects = self.swift.get_container(container.get('name'))
                 except AuthorizationFailure:
-                    if resume:
-                        path = '{}/{}'.format(container.get('name'), prefix)
-                    else:
-                        path = container.get('name')
-
                     app.logger.error("[{}] 500 Get container '{}': Keystone authorization failure".format(
                         transfer_object.project_name,
-                        path
+                        container.get('name')
                     ))
                 except Exception as err:
-                    if resume:
-                        path = '{}/{}'.format(container.get('name'), prefix)
-                    else:
-                        path = container.get('name')
-
-                    app.logger.error("[{}] {} Get container '{}': {}".format(
+                    app.logger.error("[{}] 500 Get container '{}': {}".format(
                         transfer_object.project_name,
-                        err.http_status,
-                        path,
-                        err.http_reason
+                        container.get('name'),
+                        err
                     ))
                     continue
             except Exception as err:
-                if resume:
-                    path = '{}/{}'.format(container.get('name'), prefix)
-                else:
-                    path = container.get('name')
-
-                app.logger.error("[{}] {} Get container '{}': {}".format(
+                app.logger.error("[{}] 500 Get container '{}': {}".format(
                     transfer_object.project_name,
-                    err.http_status,
-                    path,
-                    err.http_reason
+                    container.get('name'),
+                    err
                 ))
                 continue
-
-            resume = False
 
             if len(objects) > 0:
                 self._get_container(
@@ -448,7 +475,9 @@ class SynchronizeProjects():
         db.session.commit()
 
         transfer_project = None
+        time.sleep(0.1)
         result[index] = 'ok'
+
 
     def _get_container(self, container, bucket, transfer_object, transfer, objects):
         for obj in objects:
@@ -463,16 +492,25 @@ class SynchronizeProjects():
                     continue
 
                 blob = bucket.blob('{}/{}'.format(container, prefix))
-                blob.upload_from_string('',
-                    content_type='application/directory',
-                    num_retries=3,
-                    timeout=30
-                )
-                self.app.logger.info("[{}] 201 PUT folder '{}/{}': Created".format(
-                    transfer_object.project_name,
-                    container,
-                    prefix
-                ))
+
+                try:
+                    blob.upload_from_string('',
+                        content_type='application/directory',
+                        num_retries=3,
+                        timeout=30
+                    )
+                    # self.app.logger.info("[{}] 201 PUT folder '{}/{}': Created".format(
+                    #     transfer_object.project_name,
+                    #     container,
+                    #     prefix
+                    # ))
+                except requests.exceptions.ReadTimeout:
+                    self.app.logger.info("[{}] 500 PUT folder '{}/{}': ReadTimeout".format(
+                        transfer_object.project_name,
+                        container,
+                        prefix
+                    ))
+                    continue
 
                 transfer.last_object = '{}/{}'.format(container, prefix)
                 self.flush_object -= 1
@@ -491,35 +529,31 @@ class SynchronizeProjects():
                     self.flush_object = self.FLUSH_OBJECT
 
                 try:
-                    time.sleep(0.3)
                     meta, objects = self.swift.get_container(container, prefix=prefix)
                 except requests.exceptions.ConnectionError as err:
                     try:
-                        time.sleep(0.3)
                         self.conn = self.keystone.get_keystone_connection()
                         self.swift = Swift(self.conn, self.project_id)
                         meta, objects = self.swift.get_container(container, prefix=prefix)
                     except AuthorizationFailure:
-                        app.logger.error("[{}] 500 Get container '{}': Keystone authorization failure".format(
+                        self.app.logger.error("[{}] 500 Get container '{}': Keystone authorization failure".format(
                             transfer_object.project_name,
                             container
                         ))
                     except Exception as err:
-                        self.app.logger.error("[{}] {} Get container '{}/{}': {}".format(
+                        self.app.logger.error("[{}] 500 Get container '{}/{}': {}".format(
                             transfer_object.project_name,
-                            err.http_status,
                             container,
                             prefix,
-                            err.http_reason
+                            err
                         ))
                         continue
                 except Exception as err:
-                    self.app.logger.error("[{}] {} Get container '{}/{}': {}".format(
+                    self.app.logger.error("[{}] 500 Get container '{}/{}': {}".format(
                         transfer_object.project_name,
-                        err.http_status,
                         container,
                         prefix,
-                        err.http_reason
+                        err
                     ))
                     continue
 
@@ -534,20 +568,44 @@ class SynchronizeProjects():
             else:
                 if obj.get('content_type') != 'application/directory':
                     try:
-                        time.sleep(0.3)
                         headers, content = self.swift.get_object(container, obj.get('name'))
                     except requests.exceptions.ConnectionError:
                         try:
-                            time.sleep(0.3)
                             self.conn = self.keystone.get_keystone_connection()
                             self.swift = Swift(self.conn, self.project_id)
                             headers, content = self.swift.get_object(container, obj.get('name'))
-                        except AuthorizationFailure:
+                        except IncompleteRead:
+                            transfer.count_error += 1
+                            obj_path = "{}/{}".format(container, obj.get('name'))
+
+                            transfer_error = TransferProjectError(
+                                object_error=obj_path,
+                                transfer_project_id=transfer_object.id
+                            )
+                            transfer_error.save()
+
                             app.logger.error("[{}] 500 Get object '{}/{}': Keystone authorization failure".format(
                                 transfer_object.project_name,
                                 container,
                                 obj.get('name')
                             ))
+                            continue
+                        except AuthorizationFailure:
+                            transfer.count_error += 1
+                            obj_path = "{}/{}".format(container, obj.get('name'))
+
+                            transfer_error = TransferProjectError(
+                                object_error=obj_path,
+                                transfer_project_id=transfer_object.id
+                            )
+                            transfer_error.save()
+
+                            app.logger.error("[{}] 500 Get object '{}/{}': Keystone authorization failure".format(
+                                transfer_object.project_name,
+                                container,
+                                obj.get('name')
+                            ))
+                            continue
                         except Exception as err:
                             transfer.count_error += 1
                             obj_path = "{}/{}".format(container, obj.get('name'))
@@ -558,14 +616,30 @@ class SynchronizeProjects():
                             )
                             transfer_error.save()
 
-                            self.app.logger.error("[{}] {} Get object '{}/{}': {}".format(
+                            self.app.logger.error("[{}] 500 Get object '{}/{}': {}".format(
                                 transfer_object.project_name,
-                                err.http_status,
                                 container,
                                 obj.get('name'),
-                                err.http_reason
+                                err
                             ))
                             continue
+                    except IncompleteRead:
+                        transfer.count_error += 1
+                        obj_path = "{}/{}".format(container, obj.get('name'))
+
+                        transfer_error = TransferProjectError(
+                            object_error=obj_path,
+                            transfer_project_id=transfer_object.id
+                        )
+                        transfer_error.save()
+
+                        self.app.logger.error("[{}] 500 Get object '{}/{}': {}".format(
+                            transfer_object.project_name,
+                            container,
+                            obj.get('name'),
+                            err
+                        ))
+                        continue
                     except Exception as err:
                         transfer.count_error += 1
                         obj_path = "{}/{}".format(container, obj.get('name'))
@@ -576,12 +650,11 @@ class SynchronizeProjects():
                         )
                         transfer_error.save()
 
-                        self.app.logger.error("[{}] {} Get object '{}/{}': {}".format(
+                        self.app.logger.error("[{}] 500 Get object '{}/{}': {}".format(
                             transfer_object.project_name,
-                            err.http_status,
                             container,
                             obj.get('name'),
-                            err.http_reason
+                            err
                         ))
                         continue
 
@@ -620,18 +693,24 @@ class SynchronizeProjects():
                     if len(meta_keys) or len(reserved_keys):
                         blob.metadata = metadata
 
-                    blob.upload_from_string(
-                        content,
-                        content_type=obj.get('content_type'),
-                        num_retries=3,
-                        timeout=900
-                    )
-                    self.app.logger.info("[{}] 201 PUT object '{}' {} {}: Created".format(
-                        transfer_object.project_name,
-                        obj_path,
-                        obj.get('content_type'),
-                        len(content)
-                    ))
+                    try:
+                        blob.upload_from_string(
+                            content,
+                            content_type=obj.get('content_type'),
+                            num_retries=3,
+                            timeout=900
+                        )
+                        # self.app.logger.info("[{}] 201 PUT object '{}' {} {}: Created".format(
+                        #     transfer_object.project_name,
+                        #     obj_path,
+                        #     obj.get('content_type'),
+                        #     len(content)
+                        # ))
+                    except requests.exceptions.ReadTimeout:
+                        self.app.logger.info("[{}] 500 PUT object '{}' {}: ReadTimeout".format(
+                            transfer_object.project_name,
+                            obj_path
+                        ))
 
                     content = None
 
@@ -652,141 +731,3 @@ class SynchronizeProjects():
 
                         transfer_project = None
                         self.flush_object = self.FLUSH_OBJECT
-
-    def send_container(self, containers):
-        app = create_app('config/{}_config.py'.format(os.environ.get("FLASK_CONFIG")))
-        ctx = app.app_context()
-        ctx.push()
-
-        error = False
-        count = 0
-        container_name = None
-
-        google = Google()
-        gcp_client = google.get_gcp_client()
-        account = 'auth_{}'.format(self.project_id)
-
-        try:
-            bucket = gcp_client.get_bucket(
-                account,
-                timeout=30
-            )
-        except TransportError:
-            try:
-                bucket = gcp_client.get_bucket(
-                    account,
-                    timeout=30
-                )
-            except Exception as err:
-                app.logger.error("[{}] {} Get bucket '{}': {}".format(
-                    self.project_name,
-                    err.http_status,
-                    account,
-                    err.http_reason
-                ))
-        except requests.exceptions.ReadTimeout as err:
-            try:
-                bucket = gcp_client.get_bucket(
-                    account,
-                    timeout=30
-                )
-            except Exception as err:
-                app.logger.error("[{}] {} Get bucket '{}': {}".format(
-                    self.project_name,
-                    err.http_status,
-                    account,
-                    err.http_reason
-                ))
-        except Exception as err:
-            app.logger.error('[{}] 500 GET bucket: {}'.format(
-                self.project_name,
-                err
-            ))
-
-        for container in containers:
-            try:
-                time.sleep(0.4)
-                container_name = container.get('name')
-                meta, objects = self.swift.get_container(container_name)
-            except requests.exceptions.ConnectionError:
-                try:
-                    time.sleep(0.4)
-                    self.conn = self.keystone.get_keystone_connection()
-                    self.swift = Swift(self.conn, self.project_id)
-                    meta, objects = self.swift.get_container(container_name)
-                except AuthorizationFailure:
-                    app.logger.error("[{}] 500 Get container '{}': Keystone authorization failure".format(
-                        self.project_name,
-                        container_name
-                    ))
-                except Exception as err:
-                    app.logger.error("[{}] {} Get container '{}': {}".format(
-                        self.project_name,
-                        err.http_status,
-                        container_name,
-                        err.http_reason
-                    ))
-                    error = True
-            except Exception as err:
-                app.logger.error("[{}] {} Get container '{}': {}".format(
-                    self.project_name,
-                    err.http_status,
-                    container_name,
-                    err.http_reason
-                ))
-                error = True
-
-            if not error:
-                blob = bucket.blob(container_name + '/')
-                metadata = {}
-
-                metadata['object-count'] = meta.get('x-container-object-count', 0)
-                metadata['bytes-used'] = meta.get('x-container-bytes-used', 0)
-
-                for item in meta.items():
-                    key, value = item
-                    key = key.lower()
-                    prefix = key.split('x-container-meta-')
-
-                    if len(prefix) > 1:
-                        meta_key = 'meta-{}'.format(prefix[1].lower())
-                        metadata[meta_key] = item[1].lower()
-                        continue
-
-                    if key == 'x-container-read':
-                        metadata["read"] = value
-                        continue
-
-                    if key == 'x-versions-location' or key == 'x-history-location':
-                        metadata["x-versions-location"] = value
-                        continue
-
-                    if key == 'x-undelete-enabled':
-                        metadata["x-container-sysmeta-undelete-enabled"] = value
-                        metadata["x-undelete-enabled"] = value
-                        continue
-
-                blob.metadata = metadata
-                blob.upload_from_string('',
-                    content_type='application/directory',
-                    num_retries=3,
-                    timeout=30
-                )
-                app.logger.info("[{}] 201 PUT container '{}': Created".format(
-                    self.project_name,
-                    container_name
-                ))
-                count +=1
-        return count
-
-    def iterator_slice(self, iterator, length):
-        start = 0
-        end = length
-
-        while True:
-            res = list(itertools.islice(iterator, start, end))
-            start += length
-            end += length
-            if not res:
-                break
-            yield res
