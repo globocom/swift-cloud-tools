@@ -10,6 +10,7 @@ from threading import Thread
 from swift_cloud_tools import create_app
 from google.cloud.exceptions import NotFound
 from google.auth.exceptions import TransportError
+from google.api_core.exceptions import BadRequest
 from swiftclient import client as swift_client
 from keystoneauth1.exceptions.auth import AuthorizationFailure
 from http.client import IncompleteRead
@@ -43,6 +44,11 @@ class SynchronizeProjects():
         self.conn = self.keystone.get_keystone_connection()
         self.swift = Swift(self.conn, project_id)
         self.FLUSH_OBJECT = int(os.environ.get("FLUSH_OBJECT", "1000"))
+
+        session = requests.Session()
+        adapter = requests.adapters.HTTPAdapter(pool_connections=100, pool_maxsize=100)
+        session.mount('https://', adapter)
+        session.mount('http://', adapter)
 
     def synchronize(self, project_id):
         """Get project in swift."""
@@ -112,13 +118,13 @@ class SynchronizeProjects():
                     project_id
                 ))
             except Exception as err:
-                self.app.logger.info("[{}] 500 GET account 'AUTH_{}': {}".format(
+                self.app.logger.error("[{}] 500 GET account 'AUTH_{}': {}".format(
                     transfer_object.project_name,
                     project_id,
                     err
                 ))
         except Exception as err:
-            self.app.logger.info("[{}] 500 GET account 'AUTH_{}': {}".format(
+            self.app.logger.error("[{}] 500 GET account 'AUTH_{}': {}".format(
                 transfer_object.project_name,
                 project_id,
                 err
@@ -190,7 +196,7 @@ class SynchronizeProjects():
 
                 for i in range(len(threads)):
                     time.sleep(0.5)
-                    threads[i] = Thread(target=self.send_container, args=(self.app, gcp_client, parts[i], results, counts, i))
+                    threads[i] = Thread(target=self.send_container, args=(self.app, gcp_client, parts[i], transfer, transfer_object, results, counts, i))
                     threads[i].start()
                 for i in range(len(threads)):
                     threads[i].join()
@@ -223,14 +229,14 @@ class SynchronizeProjects():
                             project_id
                         ))
                     except Exception as err:
-                        self.app.logger.info("[{}] 500 GET account 'AUTH_{}': {}".format(
+                        self.app.logger.error("[{}] 500 GET account 'AUTH_{}': {}".format(
                             transfer_object.project_name,
                             project_id,
                             err
                         ))
                         containers_copy = containers = []
                 except Exception as err:
-                    self.app.logger.info("[{}] 500 GET account 'AUTH_{}': {}".format(
+                    self.app.logger.error("[{}] 500 GET account 'AUTH_{}': {}".format(
                         transfer_object.project_name,
                         project_id,
                         err
@@ -264,7 +270,7 @@ class SynchronizeProjects():
 
         for i in range(len(threads)):
             time.sleep(0.5)
-            threads[i] = Thread(target=self.send_object, args=(parts[i], bucket, transfer, transfer_object, results, i))
+            threads[i] = Thread(target=self.send_object, args=(self.app, parts[i], bucket, transfer, transfer_object, results, i))
             threads[i].start()
         for i in range(len(threads)):
             threads[i].join()
@@ -276,7 +282,7 @@ class SynchronizeProjects():
             ))
 
 
-    def send_container(self, app, gcp_client, containers, result, counts, index):
+    def send_container(self, app, gcp_client, containers, transfer, transfer_object, result, counts, index):
         error = False
         container_name = None
         account = 'auth_{}'.format(self.project_id)
@@ -305,7 +311,7 @@ class SynchronizeProjects():
                     timeout=30
                 )
             except Exception as err:
-                app.logger.error("[{}] 500 Get bucket '{}': {}".format(
+                app.logger.error("[{}] 504 Get bucket '{}': {}".format(
                     self.project_name,
                     account,
                     err
@@ -393,24 +399,51 @@ class SynchronizeProjects():
                         num_retries=3,
                         timeout=30
                     )
-
                     # app.logger.info("[{}] 201 PUT container '{}': Created".format(
                     #     self.project_name,
                     #     container_name
                     # ))
                     counts[index] += 1
-                except requests.exceptions.ReadTimeout:
-                    app.logger.error("[{}] 500 PUT container '{}': ReadTimeout".format(
+                except BadRequest:
+                    transfer.count_error += 1
+                    app.logger.error("[{}] 400 PUT container '{}': BadRequest".format(
                         self.project_name,
                         container_name
                     ))
+                    transfer_error = TransferProjectError(
+                        object_error=container_name,
+                        transfer_project_id=transfer_object.id
+                    )
+                    transfer_error.save()
+                except requests.exceptions.ReadTimeout:
+                    transfer.count_error += 1
+                    app.logger.error("[{}] 504 PUT container '{}': ReadTimeout".format(
+                        self.project_name,
+                        container_name
+                    ))
+                    transfer_error = TransferProjectError(
+                        object_error=container_name,
+                        transfer_project_id=transfer_object.id
+                    )
+                    transfer_error.save()
+                except Exception as err:
+                    transfer.count_error += 1
+                    app.logger.error("[{}] 500 PUT container '{}': {}".format(
+                        self.project_name,
+                        container_name,
+                        err
+                    ))
+                    transfer_error = TransferProjectError(
+                        object_error=container_name,
+                        transfer_project_id=transfer_object.id
+                    )
+                    transfer_error.save()
 
         time.sleep(0.1)
         result[index] = 'ok'
 
 
-    def send_object(self, containers, bucket, transfer, transfer_object, result, index):
-        app = create_app('config/{}_config.py'.format(os.environ.get("FLASK_CONFIG")))
+    def send_object(self, app, containers, bucket, transfer, transfer_object, result, index):
         ctx = app.app_context()
         ctx.push()
 
@@ -436,6 +469,7 @@ class SynchronizeProjects():
                         transfer_object.project_name,
                         container.get('name')
                     ))
+                    continue
                 except Exception as err:
                     app.logger.error("[{}] 500 Get container '{}': {}".format(
                         transfer_object.project_name,
@@ -455,8 +489,8 @@ class SynchronizeProjects():
                 self._get_container(
                     container.get('name'),
                     bucket,
-                    transfer_object,
                     transfer,
+                    transfer_object,
                     objects
                 )
 
@@ -479,13 +513,16 @@ class SynchronizeProjects():
         result[index] = 'ok'
 
 
-    def _get_container(self, container, bucket, transfer_object, transfer, objects):
+    def _get_container(self, container, bucket, transfer, transfer_object, objects):
+        ctx = self.app.app_context()
+        ctx.push()
+
         for obj in objects:
             if obj.get('subdir'):
                 prefix = obj.get('subdir')
 
                 if not prefix:
-                    self.app.logger.info("[{}] 500 PUT folder '{}/None': Prefix None".format(
+                    self.app.logger.error("[{}] 500 PUT folder '{}/None': Prefix None".format(
                         transfer_object.project_name,
                         container
                     ))
@@ -504,12 +541,45 @@ class SynchronizeProjects():
                     #     container,
                     #     prefix
                     # ))
-                except requests.exceptions.ReadTimeout:
-                    self.app.logger.info("[{}] 500 PUT folder '{}/{}': ReadTimeout".format(
+                except BadRequest:
+                    transfer.count_error += 1
+                    self.app.logger.error("[{}] 400 PUT folder '{}/{}': BadRequest".format(
                         transfer_object.project_name,
                         container,
                         prefix
                     ))
+                    transfer_error = TransferProjectError(
+                        object_error="{}/{}".format(container, prefix),
+                        transfer_project_id=transfer_object.id
+                    )
+                    transfer_error.save()
+                    continue
+                except requests.exceptions.ReadTimeout:
+                    transfer.count_error += 1
+                    self.app.logger.error("[{}] 504 PUT folder '{}/{}': ReadTimeout".format(
+                        transfer_object.project_name,
+                        container,
+                        prefix
+                    ))
+                    transfer_error = TransferProjectError(
+                        object_error="{}/{}".format(container, prefix),
+                        transfer_project_id=transfer_object.id
+                    )
+                    transfer_error.save()
+                    continue
+                except Exception as err:
+                    transfer.count_error += 1
+                    self.app.logger.error("[{}] 500 PUT folder '{}/{}': {}".format(
+                        transfer_object.project_name,
+                        container,
+                        prefix,
+                        err
+                    ))
+                    transfer_error = TransferProjectError(
+                        object_error="{}/{}".format(container, prefix),
+                        transfer_project_id=transfer_object.id
+                    )
+                    transfer_error.save()
                     continue
 
                 transfer.last_object = '{}/{}'.format(container, prefix)
@@ -561,8 +631,8 @@ class SynchronizeProjects():
                     self._get_container(
                         container,
                         bucket,
-                        transfer_object,
                         transfer,
+                        transfer_object,
                         objects
                     )
             else:
@@ -576,86 +646,71 @@ class SynchronizeProjects():
                             headers, content = self.swift.get_object(container, obj.get('name'))
                         except IncompleteRead:
                             transfer.count_error += 1
-                            obj_path = "{}/{}".format(container, obj.get('name'))
-
-                            transfer_error = TransferProjectError(
-                                object_error=obj_path,
-                                transfer_project_id=transfer_object.id
-                            )
-                            transfer_error.save()
-
-                            app.logger.error("[{}] 500 Get object '{}/{}': Keystone authorization failure".format(
+                            self.app.logger.error("[{}] 500 Get object '{}/{}': Keystone authorization failure".format(
                                 transfer_object.project_name,
                                 container,
                                 obj.get('name')
                             ))
+                            transfer_error = TransferProjectError(
+                                object_error="{}/{}".format(container, obj.get('name')),
+                                transfer_project_id=transfer_object.id
+                            )
+                            transfer_error.save()
                             continue
                         except AuthorizationFailure:
                             transfer.count_error += 1
-                            obj_path = "{}/{}".format(container, obj.get('name'))
-
-                            transfer_error = TransferProjectError(
-                                object_error=obj_path,
-                                transfer_project_id=transfer_object.id
-                            )
-                            transfer_error.save()
-
-                            app.logger.error("[{}] 500 Get object '{}/{}': Keystone authorization failure".format(
+                            self.app.logger.error("[{}] 500 Get object '{}/{}': Keystone authorization failure".format(
                                 transfer_object.project_name,
                                 container,
                                 obj.get('name')
                             ))
-                            continue
-                        except Exception as err:
-                            transfer.count_error += 1
-                            obj_path = "{}/{}".format(container, obj.get('name'))
-
                             transfer_error = TransferProjectError(
-                                object_error=obj_path,
+                                object_error="{}/{}".format(container, obj.get('name')),
                                 transfer_project_id=transfer_object.id
                             )
                             transfer_error.save()
-
+                            continue
+                        except Exception as err:
+                            transfer.count_error += 1
                             self.app.logger.error("[{}] 500 Get object '{}/{}': {}".format(
                                 transfer_object.project_name,
                                 container,
                                 obj.get('name'),
                                 err
                             ))
+                            transfer_error = TransferProjectError(
+                                object_error="{}/{}".format(container, obj.get('name')),
+                                transfer_project_id=transfer_object.id
+                            )
+                            transfer_error.save()
                             continue
                     except IncompleteRead:
                         transfer.count_error += 1
-                        obj_path = "{}/{}".format(container, obj.get('name'))
-
-                        transfer_error = TransferProjectError(
-                            object_error=obj_path,
-                            transfer_project_id=transfer_object.id
-                        )
-                        transfer_error.save()
-
                         self.app.logger.error("[{}] 500 Get object '{}/{}': {}".format(
                             transfer_object.project_name,
                             container,
                             obj.get('name'),
                             err
                         ))
+                        transfer_error = TransferProjectError(
+                            object_error="{}/{}".format(container, obj.get('name')),
+                            transfer_project_id=transfer_object.id
+                        )
+                        transfer_error.save()
                         continue
                     except Exception as err:
                         transfer.count_error += 1
-                        obj_path = "{}/{}".format(container, obj.get('name'))
-
-                        transfer_error = TransferProjectError(
-                            object_error=obj_path,
-                            transfer_project_id=transfer_object.id
-                        )
-                        transfer_error.save()
-
                         self.app.logger.error("[{}] 500 Get object '{}/{}': {}".format(
                             transfer_object.project_name,
                             container,
                             obj.get('name'),
                             err
                         ))
+                        transfer_error = TransferProjectError(
+                            object_error="{}/{}".format(container, obj.get('name')),
+                            transfer_project_id=transfer_object.id
+                        )
+                        transfer_error.save()
                         continue
 
                     obj_path = "{}/{}".format(container, obj.get('name'))
@@ -706,11 +761,40 @@ class SynchronizeProjects():
                         #     obj.get('content_type'),
                         #     len(content)
                         # ))
-                    except requests.exceptions.ReadTimeout:
-                        self.app.logger.info("[{}] 500 PUT object '{}' {}: ReadTimeout".format(
+                    except BadRequest:
+                        transfer.count_error += 1
+                        self.app.logger.error("[{}] 400 PUT object '{}' {}: BadRequest".format(
                             transfer_object.project_name,
                             obj_path
                         ))
+                        transfer_error = TransferProjectError(
+                            object_error=obj_path,
+                            transfer_project_id=transfer_object.id
+                        )
+                        transfer_error.save()
+                    except requests.exceptions.ReadTimeout:
+                        transfer.count_error += 1
+                        self.app.logger.error("[{}] 504 PUT object '{}' {}: ReadTimeout".format(
+                            transfer_object.project_name,
+                            obj_path
+                        ))
+                        transfer_error = TransferProjectError(
+                            object_error=obj_path,
+                            transfer_project_id=transfer_object.id
+                        )
+                        transfer_error.save()
+                    except Exception as err:
+                        transfer.count_error += 1
+                        self.app.logger.error("[{}] 500 PUT object '{}': {}".format(
+                            transfer_object.project_name,
+                            obj_path,
+                            err
+                        ))
+                        transfer_error = TransferProjectError(
+                            object_error=obj_path,
+                            transfer_project_id=transfer_object.id
+                        )
+                        transfer_error.save()
 
                     content = None
 
