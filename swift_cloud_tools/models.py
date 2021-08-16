@@ -162,6 +162,7 @@ class TransferProjectError(db.Model, SaveDeleteModel):
     id = db.Column(db.Integer, primary_key=True)
     object_error = db.Column(db.String(255), nullable=False)
     transfer_project_id = db.Column(db.Integer, db.ForeignKey('transfer_project.id'))
+    created = db.Column(db.DateTime, default=datetime.utcnow)
 
     def __init__(self, object_error=None, transfer_project_id=None):
         self.object_error = object_error
