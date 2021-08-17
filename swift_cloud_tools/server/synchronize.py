@@ -5,6 +5,7 @@ import time
 import json
 import os
 
+from datetime import datetime
 from flask import Response
 from threading import Thread
 from swift_cloud_tools import create_app
@@ -412,7 +413,8 @@ class SynchronizeProjects():
                     ))
                     transfer_error = TransferProjectError(
                         object_error=container_name,
-                        transfer_project_id=transfer_object.id
+                        transfer_project_id=transfer_object.id,
+                        created=datetime.now()
                     )
                     transfer_error.save()
                 except requests.exceptions.ReadTimeout:
@@ -423,7 +425,8 @@ class SynchronizeProjects():
                     ))
                     transfer_error = TransferProjectError(
                         object_error=container_name,
-                        transfer_project_id=transfer_object.id
+                        transfer_project_id=transfer_object.id,
+                        created=datetime.now()
                     )
                     transfer_error.save()
                 except Exception as err:
@@ -435,7 +438,8 @@ class SynchronizeProjects():
                     ))
                     transfer_error = TransferProjectError(
                         object_error=container_name,
-                        transfer_project_id=transfer_object.id
+                        transfer_project_id=transfer_object.id,
+                        created=datetime.now()
                     )
                     transfer_error.save()
 
@@ -494,7 +498,7 @@ class SynchronizeProjects():
                     objects
                 )
 
-        app.logger.info("[{}] 201 Finished send_object '{}'".format(
+        app.logger.info("[{}] Finished send_object '{}'".format(
             transfer_object.project_name,
             index
         ))
@@ -550,7 +554,8 @@ class SynchronizeProjects():
                     ))
                     transfer_error = TransferProjectError(
                         object_error="{}/{}".format(container, prefix),
-                        transfer_project_id=transfer_object.id
+                        transfer_project_id=transfer_object.id,
+                        created=datetime.now()
                     )
                     transfer_error.save()
                     continue
@@ -563,7 +568,8 @@ class SynchronizeProjects():
                     ))
                     transfer_error = TransferProjectError(
                         object_error="{}/{}".format(container, prefix),
-                        transfer_project_id=transfer_object.id
+                        transfer_project_id=transfer_object.id,
+                        created=datetime.now()
                     )
                     transfer_error.save()
                     continue
@@ -577,7 +583,8 @@ class SynchronizeProjects():
                     ))
                     transfer_error = TransferProjectError(
                         object_error="{}/{}".format(container, prefix),
-                        transfer_project_id=transfer_object.id
+                        transfer_project_id=transfer_object.id,
+                        created=datetime.now()
                     )
                     transfer_error.save()
                     continue
@@ -653,7 +660,8 @@ class SynchronizeProjects():
                             ))
                             transfer_error = TransferProjectError(
                                 object_error="{}/{}".format(container, obj.get('name')),
-                                transfer_project_id=transfer_object.id
+                                transfer_project_id=transfer_object.id,
+                                created=datetime.now()
                             )
                             transfer_error.save()
                             continue
@@ -666,7 +674,8 @@ class SynchronizeProjects():
                             ))
                             transfer_error = TransferProjectError(
                                 object_error="{}/{}".format(container, obj.get('name')),
-                                transfer_project_id=transfer_object.id
+                                transfer_project_id=transfer_object.id,
+                                created=datetime.now()
                             )
                             transfer_error.save()
                             continue
@@ -680,7 +689,8 @@ class SynchronizeProjects():
                             ))
                             transfer_error = TransferProjectError(
                                 object_error="{}/{}".format(container, obj.get('name')),
-                                transfer_project_id=transfer_object.id
+                                transfer_project_id=transfer_object.id,
+                                created=datetime.now()
                             )
                             transfer_error.save()
                             continue
@@ -694,7 +704,8 @@ class SynchronizeProjects():
                         ))
                         transfer_error = TransferProjectError(
                             object_error="{}/{}".format(container, obj.get('name')),
-                            transfer_project_id=transfer_object.id
+                            transfer_project_id=transfer_object.id,
+                            created=datetime.now()
                         )
                         transfer_error.save()
                         continue
@@ -708,7 +719,8 @@ class SynchronizeProjects():
                         ))
                         transfer_error = TransferProjectError(
                             object_error="{}/{}".format(container, obj.get('name')),
-                            transfer_project_id=transfer_object.id
+                            transfer_project_id=transfer_object.id,
+                            created=datetime.now()
                         )
                         transfer_error.save()
                         continue
@@ -769,7 +781,8 @@ class SynchronizeProjects():
                         ))
                         transfer_error = TransferProjectError(
                             object_error=obj_path,
-                            transfer_project_id=transfer_object.id
+                            transfer_project_id=transfer_object.id,
+                            created=datetime.now()
                         )
                         transfer_error.save()
                     except requests.exceptions.ReadTimeout:
@@ -780,7 +793,8 @@ class SynchronizeProjects():
                         ))
                         transfer_error = TransferProjectError(
                             object_error=obj_path,
-                            transfer_project_id=transfer_object.id
+                            transfer_project_id=transfer_object.id,
+                            created=datetime.now()
                         )
                         transfer_error.save()
                     except Exception as err:
@@ -792,7 +806,8 @@ class SynchronizeProjects():
                         ))
                         transfer_error = TransferProjectError(
                             object_error=obj_path,
-                            transfer_project_id=transfer_object.id
+                            transfer_project_id=transfer_object.id,
+                            created=datetime.now()
                         )
                         transfer_error.save()
 
