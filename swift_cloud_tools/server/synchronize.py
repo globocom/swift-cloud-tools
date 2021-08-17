@@ -45,11 +45,6 @@ class SynchronizeProjects():
         self.swift = Swift(self.conn, project_id)
         self.FLUSH_OBJECT = int(os.environ.get("FLUSH_OBJECT", "1000"))
 
-        session = requests.Session()
-        adapter = requests.adapters.HTTPAdapter(pool_connections=100, pool_maxsize=100)
-        session.mount('https://', adapter)
-        session.mount('http://', adapter)
-
     def synchronize(self, project_id):
         """Get project in swift."""
 
@@ -59,6 +54,11 @@ class SynchronizeProjects():
         self.app = create_app('config/{}_config.py'.format(os.environ.get("FLASK_CONFIG")))
         ctx = self.app.app_context()
         ctx.push()
+
+        session = requests.Session()
+        adapter = requests.adapters.HTTPAdapter(pool_connections=100, pool_maxsize=100)
+        session.mount('https://', adapter)
+        session.mount('http://', adapter)
 
         google = Google()
         transfer = Transfer()
