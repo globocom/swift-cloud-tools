@@ -107,12 +107,37 @@ class SynchronizeProjects():
             resume = True
 
         try:
-            account_stat, containers = self.swift.get_account()
+            if resume:
+                container_last = transfer_object.last_object.split('/')[0]
+                account_stat, containers = self.swift.get_account(marker=container_last)
+
+                if len(containers) > 0:
+                    account_stat, containers = self.swift.get_account(end_marker=containers[0].get('name'))
+
+                    if len(containers) > 1:
+                        account_stat, containers = self.swift.get_account(marker=containers[len(containers) - 2].get('name'))
+                else:
+                    account_stat, containers = self.swift.get_account()
+            else:
+                account_stat, containers = self.swift.get_account()
         except requests.exceptions.ConnectionError:
             try:
                 self.conn = self.keystone.get_keystone_connection()
                 self.swift = Swift(self.conn, project_id)
-                account_stat, containers = self.swift.get_account()
+
+                if resume:
+                    container_last = transfer_object.last_object.split('/')[0]
+                    account_stat, containers = self.swift.get_account(marker=container_last)
+
+                    if len(containers) > 0:
+                        account_stat, containers = self.swift.get_account(end_marker=containers[0].get('name'))
+
+                        if len(containers) > 1:
+                            account_stat, containers = self.swift.get_account(marker=containers[len(containers) - 2].get('name'))
+                    else:
+                        account_stat, containers = self.swift.get_account()
+                else:
+                    account_stat, containers = self.swift.get_account()
             except AuthorizationFailure:
                 app.logger.error("[{}] 500 GET account 'AUTH_{}': Keystone authorization failure".format(
                     transfer_object.project_name,
