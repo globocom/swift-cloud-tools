@@ -41,8 +41,8 @@ def create_app(config_module=None):
     return app
 
 def app_factory(global_config, **local_conf):
-    if environ.get('FLASK_CONFIG'):
-        wsgi_app = ProxyFix(create_app())
-    else:
+    if environ.get('FLASK_ENV') == 'local':
         wsgi_app = create_app()
+    else:
+        wsgi_app = ProxyFix(create_app())
     return wsgi_app
