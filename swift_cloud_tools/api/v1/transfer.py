@@ -71,3 +71,33 @@ class TransferItem(Resource):
             item['final_date'] = datetime.strftime(item.get('final_date'), "%Y-%m-%d %H:%M:%S")
 
         return item, 200
+
+
+@ns.route('/status/<string:project_id>')
+class TransferStatus(Resource):
+
+    @is_authenticated
+    def get(self, project_id):
+        """Returns a project transfer item."""
+
+        status = None
+        tp = TransferProject.find_transfer_project(project_id)
+
+        if not tp:
+            return {'status': 'Not initialized'}, 200
+
+        item = tp.to_dict()
+
+        if not item.get('initial_date') and not item.get('final_date'):
+            status = {'status': 'Waiting'}
+
+        if item.get("initial_date") and not item.get("final_date"):
+            count_swift = item.get('object_count_swift')
+            count_gcp = item.get('count_error') + item.get('object_count_gcp')
+            progress = (100 * count_gcp) / count_swift
+            status = {'status': 'Migrating', 'progress': int(progress)}
+
+        if item.get("final_date"):
+            status = {'status': 'Done'}
+
+        return status, 200
