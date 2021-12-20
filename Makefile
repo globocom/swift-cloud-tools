@@ -24,6 +24,9 @@ run_expirer: ## Run expirer
 run_transfer: ## Run transfer
 	@PYTHONPATH=`pwd`:$PYTHONPATH python swift_cloud_tools/server/transfer.py
 
+run_health: ## Run health
+	@PYTHONPATH=`pwd`:$PYTHONPATH python swift_cloud_tools/server/health.py
+
 tests: clean ## Run all tests with coverage
 	@echo "Running the tests..."
 	@py.test --cov-config .coveragerc --cov $(PROJECT_HOME) --cov-report term-missing
