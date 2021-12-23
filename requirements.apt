@@ -1,1 +1,3 @@
 default-libmysqlclient-dev
+tsuru-client
+openssh-client

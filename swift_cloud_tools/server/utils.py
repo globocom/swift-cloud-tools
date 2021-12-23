@@ -1,6 +1,12 @@
 # -*- coding: utf-8 -*-
+import paramiko
+import requests
+import subprocess
+import boto3
 import json
 import os
+
+from socket import timeout
 
 from flask import current_app as app
 from flask import Response
@@ -157,3 +163,139 @@ class Swift():
             raise err
 
         return resp['status'], resp['reason']
+
+
+class Health():
+
+    def __init__(self):
+        self.hostinfo_url = app.config.get('HOST_INFO_URL')
+        self.ssh_username = app.config.get('SSH_USERNAME')
+        self.ssh_password = app.config.get('SSH_PASSWORD')
+
+    def _get_fe_hosts(self):
+        response = requests.get(self.hostinfo_url)
+        hosts = []
+
+        if response.status_code != 200:
+            print(response.content)
+            return None
+
+        for host in response.json():
+            hosts.append(host.get('IP'))
+
+        return hosts
+
+    def acl_update(self):
+        client = paramiko.SSHClient()
+        client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+        client.load_system_host_keys()
+        # hosts = self._get_fe_hosts()
+        hosts = ['10.224.160.75']
+
+        if not hosts:
+            return 'error'
+
+        for host in hosts:
+            try:
+                client.connect(host, username=self.ssh_username, password=self.ssh_password, timeout=5)
+            except timeout:
+                process = subprocess.Popen(['tsuru',
+                                            'acl',
+                                            'rules',
+                                            'add',
+                                            'acl',
+                                            'acl_swift-cloud-tools-dev',
+                                            '--ip',
+                                            '{}/32'.format(host),
+                                            '--port',
+                                            'tcp:22'],
+                                           stdout=subprocess.PIPE,
+                                           universal_newlines=True)
+
+                while True:
+                    output = process.stdout.readline()
+                    print(output.strip())
+                    # Do something else
+                    return_code = process.poll()
+                    if return_code is not None:
+                        print('RETURN CODE', return_code)
+                        # Process has finished, read rest of the output
+                        for output in process.stdout.readlines():
+                            print(output.strip())
+                        break
+
+    def get_load_averages(self):
+        client = paramiko.SSHClient()
+        client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+        client.load_system_host_keys()
+        # hosts = self._get_fe_hosts()
+        hosts = ['10.224.160.75']
+        load_averages = []
+
+        for host in hosts:
+            try:
+                client.connect(host, username=self.ssh_username, password=self.ssh_password, timeout=5)
+            except timeout:
+                continue
+
+            stdin, stdout, stderr = client.exec_command("cat /proc/loadavg")
+            out = stdout.read().decode("utf-8")
+            load_averages.append({
+                "hostname": host,
+                "load": out.split(" ")[:3]
+            })
+
+        return load_averages
+
+    def set_dns_weight(self, weightDccm, weightGcp):
+        client = boto3.client('route53')
+
+        change = client.change_resource_record_sets(
+            HostedZoneId=os.environ.get('AWS_HOSTED_ZONE'),
+            ChangeBatch={
+            "Comment": "",
+            "Changes": [
+              {
+                "Action": "UPSERT",
+                "ResourceRecordSet": {
+                  "Name": "s3fe.storm.",
+                  "Type": "A",
+                  "SetIdentifier": "1",
+                  "Weight": weightDccm,
+                  "TTL": 60,
+                  "ResourceRecords": [
+                      {
+                          "Value": "10.0.0.1"
+                      }
+                  ]
+                }
+              },
+              {
+                "Action": "UPSERT",
+                "ResourceRecordSet": {
+                  "Name": "s3fe.storm.",
+                  "Type": "A",
+                  "SetIdentifier": "2",
+                  "Weight": weightGcp,
+                  "TTL": 60,
+                  "ResourceRecords": [
+                      {
+                          "Value": "10.0.0.2"
+                      }
+                  ]
+                }
+              }
+            ]
+        })
+
+        resp = change.get('ResponseMetadata')
+
+        if not resp:
+            return {'message': 'error'}
+
+        status = resp.get('HTTPStatusCode')
+
+        if status != 200:
+            return {'message': 'error'}
+
+        return resp.get('ChangeInfo')
