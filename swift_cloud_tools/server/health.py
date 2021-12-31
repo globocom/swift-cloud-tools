@@ -1,4 +1,5 @@
 #!/usr/bin/python3
+
 import asyncio
 import os
 import random
@@ -6,6 +7,21 @@ import random
 # from swift_cloud_tools.server.zbx_passive import Zabbix
 from swift_cloud_tools import create_app
 from swift_cloud_tools.server.utils import Health
+
+INITIAL_DCCM_WEIGHT = 254
+INITIAL_GCP_WEIGHT = 1
+
+CRITICAL_DCCM_WEIGHT = 200
+CRITICAL_GCP_WEIGHT = 55
+
+
+def is_load_high(averages, critical):
+    for avg in averages:
+        load = avg.get('load')
+        if float(load[0]) >= float(critical):
+            return True
+
+    return False
 
 
 async def work():
@@ -20,11 +36,19 @@ async def work():
         averages = health.get_load_averages()
         app.logger.info(averages)
 
-        weightDccm = random.randint(1,10)
-        weightGcp = random.randint(1,10)
+        critical = app.config.get('HEALTH_CRITICAL_LOAD')
+        high_load = is_load_high(averages, critical)
 
-        dns_weight = health.set_dns_weight(weightDccm, weightGcp)
-        app.logger.info(dns_weight)
+        if high_load:
+            dns_weight = health.set_dns_weight(CRITICAL_DCCM_WEIGHT,
+                                               CRITICAL_GCP_WEIGHT)
+            app.logger.info(dns_weight)
+        else:
+            current_dccm_weight, current_gcp_weight = health.get_dns_weight()
+            if current_dccm_weight != INITIAL_DCCM_WEIGHT:
+                dns_weight = health.set_dns_weight(INITIAL_DCCM_WEIGHT,
+                                                   INITIAL_GCP_WEIGHT)
+                app.logger.info(dns_weight)
 
         app.logger.info('[SERVICE][HEALTH] Health task completed')
         # app.logger.info('[SERVICE][HEALTH] Sending passive monitoring to zabbix')

@@ -189,8 +189,7 @@ class Health():
         client = paramiko.SSHClient()
         client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
         client.load_system_host_keys()
-        # hosts = self._get_fe_hosts()
-        hosts = ['10.224.160.75']
+        hosts = self._get_fe_hosts()
 
         if not hosts:
             return 'error'
@@ -228,13 +227,15 @@ class Health():
         client = paramiko.SSHClient()
         client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
         client.load_system_host_keys()
-        # hosts = self._get_fe_hosts()
-        hosts = ['10.224.160.75']
+        hosts = self._get_fe_hosts()
         load_averages = []
 
         for host in hosts:
             try:
-                client.connect(host, username=self.ssh_username, password=self.ssh_password, timeout=5)
+                client.connect(host,
+                               username=self.ssh_username,
+                               password=self.ssh_password,
+                               timeout=5)
             except timeout:
                 continue
 
@@ -247,25 +248,25 @@ class Health():
 
         return load_averages
 
-    def set_dns_weight(self, weightDccm, weightGcp):
-        client = boto3.client('route53')
+    def set_dns_weight(self, weight_dccm, weight_gcp):
+        client = boto3.client("route53")
 
         change = client.change_resource_record_sets(
-            HostedZoneId=os.environ.get('AWS_HOSTED_ZONE'),
+            HostedZoneId=app.config.get("AWS_HOSTED_ZONE"),
             ChangeBatch={
             "Comment": "",
             "Changes": [
               {
                 "Action": "UPSERT",
                 "ResourceRecordSet": {
-                  "Name": "s3fe.storm.",
+                  "Name": app.config.get("HEALTH_DNS"),
                   "Type": "A",
                   "SetIdentifier": "1",
-                  "Weight": weightDccm,
+                  "Weight": weight_dccm,
                   "TTL": 60,
                   "ResourceRecords": [
                       {
-                          "Value": "10.0.0.1"
+                          "Value": app.config.get("HEALTH_DCCM_IP")
                       }
                   ]
                 }
@@ -273,14 +274,14 @@ class Health():
               {
                 "Action": "UPSERT",
                 "ResourceRecordSet": {
-                  "Name": "s3fe.storm.",
+                  "Name": app.config.get("HEALTH_DNS"),
                   "Type": "A",
                   "SetIdentifier": "2",
-                  "Weight": weightGcp,
+                  "Weight": weight_gcp,
                   "TTL": 60,
                   "ResourceRecords": [
                       {
-                          "Value": "10.0.0.2"
+                          "Value": app.config.get("HEALTH_GCP_IP")
                       }
                   ]
                 }
@@ -299,3 +300,31 @@ class Health():
             return {'message': 'error'}
 
         return resp.get('ChangeInfo')
+
+    def get_dns_weight(self):
+        client = boto3.client('route53')
+
+        res = client.list_resource_record_sets(
+            HostedZoneId=app.config.get("AWS_HOSTED_ZONE"),
+            StartRecordName=app.config.get("HEALTH_DNS"),
+            StartRecordType="A"
+        )
+
+        records = res.get("ResourceRecordSets", [])
+
+        weight_dccm = None
+        weight_gcp = None
+
+        for r in records:
+            if r.get("Type") == "A" and r.get("SetIdentifier") == 1:
+                weight_dccm = r.get("Weight")
+
+            if r.get("Type") == "A" and r.get("SetIdentifier") == 2:
+                weight_gcp = r.get("Weight")
+
+        return weight_dccm, weight_gcp
+
+
+
+
+

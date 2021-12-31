@@ -28,3 +28,10 @@ HOST_INFO_URL = os.environ.get("HOST_INFO_URL")
 
 SSH_USERNAME = os.environ.get("SSH_USERNAME")
 SSH_PASSWORD = os.environ.get("SSH_PASSWORD")
+
+AWS_HOSTED_ZONE = os.environ.get('AWS_HOSTED_ZONE')
+
+HEALTH_DNS = os.environ.get("HEALTH_DNS", "s3fe.storm.")
+HEALTH_DCCM_IP = os.environ.get("HEALTH_DCCM_IP", "10.0.0.1")
+HEALTH_GCP_IP = os.environ.get("HEALTH_GCP_IP", "10.0.0.2")
+HEALTH_CRITICAL_LOAD = os.environ.get("HEALTH_CRITICAL_LOAD", "3.00")
