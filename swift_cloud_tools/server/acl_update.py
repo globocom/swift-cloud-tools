@@ -1,10 +1,13 @@
 #!/usr/bin/python3
 import asyncio
 import os
+import logging
 
 # from swift_cloud_tools.server.zbx_passive import Zabbix
 from swift_cloud_tools import create_app
 from swift_cloud_tools.server.utils import Health
+
+logger = logging.getLogger(__name__)
 
 
 async def work():
@@ -34,5 +37,5 @@ if __name__ == '__main__':
     except KeyboardInterrupt:
         pass
     finally:
-        app.logger.info('[SERVICE][ACLUPDATE] Closing loop')
+        logger.info('[SERVICE][ACLUPDATE] Closing loop')
         loop.close()
