@@ -190,20 +190,26 @@ class Health():
         client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
         client.load_system_host_keys()
         hosts = self._get_fe_hosts()
+        acl_service_instance = app.config.get('ACL_SERVICE_INSTANCE')
 
         if not hosts:
             return 'error'
 
         for host in hosts:
             try:
-                client.connect(host, username=self.ssh_username, password=self.ssh_password, timeout=5)
+                client.connect(
+                    host,
+                    username=self.ssh_username,
+                    password=self.ssh_password,
+                    timeout=5
+                )
             except timeout:
                 process = subprocess.Popen(['tsuru',
                                             'acl',
                                             'rules',
                                             'add',
                                             'acl',
-                                            'acl_swift-cloud-tools-dev',
+                                            acl_service_instance,
                                             '--ip',
                                             '{}/32'.format(host),
                                             '--port',
@@ -223,30 +229,49 @@ class Health():
                             print(output.strip())
                         break
 
-    def get_load_averages(self):
-        client = paramiko.SSHClient()
-        client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-        client.load_system_host_keys()
+    def load_avg(self, host_ssh_client):
+        _, stdout, stderr = host_ssh_client.exec_command("cat /proc/loadavg")
+        out = stdout.read().decode("utf-8")
+        err = stderr.read().decode("utf-8")
+
+        if  err != "":
+            return ["error", err]
+
+        return out.split(" ")[:3][0]
+
+    def open_connections(self, host_ssh_client):
+        _, stdout, stderr = host_ssh_client.exec_command(
+            "/usr/sbin/ss -o state established '( sport = :8080 or sport = :8043 )' | wc -l")
+        out = stdout.read().decode("utf-8")
+        err = stderr.read().decode("utf-8")
+
+        if  err != "":
+            return ["error", err]
+
+        return out.replace("\n", "")
+
+    def stats(self):
+        ssh_client = paramiko.SSHClient()
+        ssh_client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+        ssh_client.load_system_host_keys()
         hosts = self._get_fe_hosts()
-        load_averages = []
 
         for host in hosts:
             try:
-                client.connect(host,
-                               username=self.ssh_username,
-                               password=self.ssh_password,
-                               timeout=5)
+                ssh_client.connect(
+                    host,
+                    username=self.ssh_username,
+                    password=self.ssh_password,
+                    timeout=5
+                )
             except timeout:
                 continue
 
-            stdin, stdout, stderr = client.exec_command("cat /proc/loadavg")
-            out = stdout.read().decode("utf-8")
-            load_averages.append({
-                "hostname": host,
-                "load": out.split(" ")[:3]
-            })
-
-        return load_averages
+            yield {
+                "host": host,
+                "load": self.load_avg(ssh_client),
+                "connections": self.open_connections(ssh_client)
+            }
 
     def set_dns_weight(self, weight_dccm, weight_gcp):
         client = boto3.client("route53")
@@ -261,7 +286,7 @@ class Health():
                 "ResourceRecordSet": {
                   "Name": app.config.get("HEALTH_DNS"),
                   "Type": "A",
-                  "SetIdentifier": "1",
+                  "SetIdentifier": "Globo",
                   "Weight": weight_dccm,
                   "TTL": 60,
                   "ResourceRecords": [
@@ -276,7 +301,7 @@ class Health():
                 "ResourceRecordSet": {
                   "Name": app.config.get("HEALTH_DNS"),
                   "Type": "A",
-                  "SetIdentifier": "2",
+                  "SetIdentifier": "GCP",
                   "Weight": weight_gcp,
                   "TTL": 60,
                   "ResourceRecords": [
@@ -316,15 +341,10 @@ class Health():
         weight_gcp = None
 
         for r in records:
-            if r.get("Type") == "A" and r.get("SetIdentifier") == 1:
+            if r.get("Type") == "A" and r.get("SetIdentifier") == "Globo":
                 weight_dccm = r.get("Weight")
 
-            if r.get("Type") == "A" and r.get("SetIdentifier") == 2:
+            if r.get("Type") == "A" and r.get("SetIdentifier") == "GCP":
                 weight_gcp = r.get("Weight")
 
         return weight_dccm, weight_gcp
-
-
-
-
-
