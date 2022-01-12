@@ -27,3 +27,14 @@ HOST_INFO_URL = os.environ.get("HOST_INFO_URL")
 
 SSH_USERNAME = os.environ.get("SSH_USERNAME")
 SSH_PASSWORD = os.environ.get("SSH_PASSWORD")
+
+AWS_HOSTED_ZONE = os.environ.get('AWS_HOSTED_ZONE')
+
+ACL_SERVICE_INSTANCE = os.environ.get('ACL_SERVICE_INSTANCE')
+
+HEALTH_DNS = os.environ.get("HEALTH_DNS")
+HEALTH_DCCM_IP = os.environ.get("HEALTH_DCCM_IP")
+HEALTH_GCP_IP = os.environ.get("HEALTH_GCP_IP")
+HEALTH_VALUES = os.environ.get("HEALTH_VALUES")
+HEALTH_INTERVAL = os.environ.get("HEALTH_INTERVAL", "600")
+HEALTH_DRY_RUN = os.environ.get("HEALTH_DRY_RUN", "False")

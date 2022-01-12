@@ -31,7 +31,11 @@ SSH_PASSWORD = os.environ.get("SSH_PASSWORD")
 
 AWS_HOSTED_ZONE = os.environ.get('AWS_HOSTED_ZONE')
 
+ACL_SERVICE_INSTANCE = os.environ.get('ACL_SERVICE_INSTANCE')
+
 HEALTH_DNS = os.environ.get("HEALTH_DNS", "s3fe.storm.")
 HEALTH_DCCM_IP = os.environ.get("HEALTH_DCCM_IP", "10.0.0.1")
 HEALTH_GCP_IP = os.environ.get("HEALTH_GCP_IP", "10.0.0.2")
-HEALTH_CRITICAL_LOAD = os.environ.get("HEALTH_CRITICAL_LOAD", "3.00")
+HEALTH_VALUES = os.environ.get("HEALTH_VALUES")
+HEALTH_INTERVAL = os.environ.get("HEALTH_INTERVAL", "600")
+HEALTH_DRY_RUN = os.environ.get("HEALTH_DRY_RUN", "False")
