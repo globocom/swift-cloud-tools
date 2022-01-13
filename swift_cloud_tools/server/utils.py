@@ -5,6 +5,7 @@ import subprocess
 import boto3
 import json
 import os
+import logging
 
 from socket import timeout
 
@@ -14,6 +15,9 @@ from keystoneclient.v3 import client as keystone_client
 from swiftclient import client as swift_client
 from google.oauth2 import service_account
 from google.cloud import storage
+
+logging.getLogger("paramiko").setLevel(logging.WARNING)
+logging.getLogger("boto3").setLevel(logging.WARNING)
 
 
 class Transfer():
@@ -235,9 +239,10 @@ class Health():
         err = stderr.read().decode("utf-8")
 
         if  err != "":
-            return ["error", err]
+            self._log(f'Load Average Error: {err}')
+            return 'error'
 
-        return out.split(" ")[:3][0]
+        return float(out.split(" ")[:3][0])
 
     def open_connections(self, host_ssh_client):
         _, stdout, stderr = host_ssh_client.exec_command(
@@ -246,14 +251,28 @@ class Health():
         err = stderr.read().decode("utf-8")
 
         if  err != "":
-            return ["error", err]
+            self._log(f'Open Connections Error: {err}')
+            return 'error'
 
-        return out.replace("\n", "")
+        return int(out.replace("\n", ""))
+
+    def cpu_usage(self, host_ssh_client):
+        _, stdout, stderr = host_ssh_client.exec_command("mpstat")
+        out = stdout.read().decode("utf-8")
+        err = stderr.read().decode("utf-8")
+
+        if  err != "":
+            self._log(f'CPU Usage Error: {err}')
+            return 'error'
+
+        idle = float(out[-6:].replace("\n", ""))
+
+        return float("{:.2f}".format(100 - idle))
 
     def stats(self):
         ssh_client = paramiko.SSHClient()
         ssh_client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-        ssh_client.load_system_host_keys()
+        # ssh_client.load_system_host_keys()
         hosts = self._get_fe_hosts()
 
         for host in hosts:
@@ -269,7 +288,7 @@ class Health():
 
             yield {
                 "host": host,
-                "load": self.load_avg(ssh_client),
+                "cpu": self.cpu_usage(ssh_client),
                 "connections": self.open_connections(ssh_client)
             }
 

@@ -15,26 +15,26 @@ logger = logging.getLogger(__name__)
 class WeightHandler:
     values = {
         "low": {
-            "load_min": 0.00,
-            "load_max": 1.00,
+            "cpu_min": 0,
+            "cpu_max": 20,
             "conn_min": 0,
-            "conn_max": 5000,
+            "conn_max": 90000,
             "dccm_weight": 255,
             "gcp_weight": 1
         },
         "medium": {
-            "load_min": 1.01,
-            "load_max": 2.00,
-            "conn_min": 5001,
-            "conn_max": 15000,
+            "cpu_min": 21,
+            "cpu_max": 40,
+            "conn_min": 90001,
+            "conn_max": 180000,
             "dccm_weight": 235,
             "gcp_weight": 20
         },
         "high": {
-            "load_min": 2.01,
-            "load_max": 9.99,
-            "conn_min": 15001,
-            "conn_max": 99999,
+            "cpu_min": 41,
+            "cpu_max": 100,
+            "conn_min": 180001,
+            "conn_max": 999999,
             "dccm_weight": 200,
             "gcp_weight": 55
         }
@@ -46,13 +46,13 @@ class WeightHandler:
         dc_w, gcp_w = self.health.get_dns_weight()
         self.current_dccm_weight = dc_w
         self.current_gcp_weight = gcp_w
-        self._log(f'Current DNS Weight: Globo {dc_w}, GCP {gcp_w}')
+
+        current = self.current_level
+        self._log(f'Current DNS Weight -> Globo: {dc_w}, GCP: {gcp_w} ({current.upper()})')
 
     def _log(self, msg, level="info"):
-        if self.dry_run:
-            msg = f'[SERVICE][HEALTH (DRY RUN)] {msg}'
-        else:
-            msg = f'[SERVICE][HEALTH] {msg}'
+        dry_run_msg = " (DRY RUN)" if self.dry_run else ""
+        msg = f'[SERVICE][HEALTH{dry_run_msg}] {msg}'
 
         if level == "warning":
             logger.warning(msg)
@@ -83,17 +83,21 @@ class WeightHandler:
         return current
 
     def _stat_level(self, stat):
-        load = float(stat.get("load"))
+        cpu = float(stat.get("cpu"))
         connections = int(stat.get("connections"))
-        result = {"load": "low", "connections": "low"}
+        result = {
+            "host": stat.get("host"),
+            "cpu": "low",
+            "connections": "low"
+        }
 
         for level in self.values.keys():
             items = self.values[level]
 
-            if load >= items.get("load_min") and load <= items.get("load_max"):
-                result["load"] = level
+            if cpu >= items.get("cpu_min") and cpu <= items.get("cpu_max"):
+                result["cpu"] = level
 
-            if connections >= items.get("conn_min") and load <= items.get("conn_max"):
+            if connections >= items.get("conn_min") and connections <= items.get("conn_max"):
                 result["connections"] = level
 
         return result
@@ -103,17 +107,27 @@ class WeightHandler:
         current = self.current_level
 
         for stat in stats:
-            self._log(f'{stat}')
-            level = self._stat_level(stat)
-            conn_level = level.get("connections")
-            load_level = level.get("load")
+            stat_level = self._stat_level(stat)
 
-            if conn_level != current:
-                self.update_weight(conn_level)
+            cpu_level = stat_level.get("cpu")
+            if cpu_level == "error":
+                cpu_level = current
+
+            conn_level = stat_level.get("connections")
+            if conn_level == "error":
+                conn_level = current
+
+            host = stat_level.get("host")
+            self._log(f'Host stats: {stat}')
+
+            if cpu_level != current:
+                self._log(f'Host {host} with CPU level {cpu_level.upper()}, current is {current.upper()}.')
+                self.update_weight(cpu_level)
                 return None
 
-            if load_level != current:
-                self.update_weight(load_level)
+            if conn_level != current:
+                self._log(f'Host {host} with connections level {conn_level.upper()}, current is {current.upper()}.')
+                self.update_weight(conn_level)
                 return None
 
     def update_weight(self, level):
@@ -121,7 +135,7 @@ class WeightHandler:
         item = self.values.get(update_level)
         dccm_weight = item.get("dccm_weight")
         gcp_weight = item.get("gcp_weight")
-        self._log(f'Update DNS Weight: Globo {dccm_weight}, GCP {gcp_weight}')
+        self._log(f'Updating DNS Weight to {update_level.upper()} -> Globo: {dccm_weight}, GCP: {gcp_weight}')
 
         if not self.dry_run:
             self.health.set_dns_weight(dccm_weight, gcp_weight)
@@ -134,10 +148,8 @@ async def work():
 
     while True:
         dry_run = app.config.get("HEALTH_DRY_RUN") == "True"
-        if dry_run:
-            start_msg = "[SERVICE][HEALTH (DRY RUN)]"
-        else:
-            start_msg = "[SERVICE][HEALTH]"
+        dry_run_msg = " (DRY RUN)" if dry_run else ""
+        start_msg = f'[SERVICE][HEALTH{dry_run_msg}]'
 
         app.logger.info(f'{start_msg} Health task started')
 
