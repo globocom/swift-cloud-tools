@@ -15,7 +15,7 @@ Teremos sempre 3 níveis configurados: Baixo, Médio e Alto.
 
 ### Passo a passo
 
--   O serviço é executado num intervalo fixo (padrão 10 min);
+-   O serviço é executado num intervalo fixo (padrão 4 min);
 -   cada vez que é executado, busca os pesos atuais para Globo e GCP;
 -   em seguida é verificado se estes pesos estão nos níveis Baixo, Médio ou Alto;
 -   verificamos então o uso de cpu e o número de conexões em cada host FE;
