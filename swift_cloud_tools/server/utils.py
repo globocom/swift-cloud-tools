@@ -16,6 +16,7 @@ from swiftclient import client as swift_client
 from google.oauth2 import service_account
 from google.cloud import storage
 
+logger = logging.getLogger(__name__)
 logging.getLogger("paramiko").setLevel(logging.WARNING)
 logging.getLogger("boto3").setLevel(logging.WARNING)
 
@@ -177,15 +178,17 @@ class Health():
         self.ssh_password = app.config.get('SSH_PASSWORD')
 
     def _get_fe_hosts(self):
-        response = requests.get(self.hostinfo_url)
         hosts = []
 
-        if response.status_code != 200:
-            print(response.content)
-            return None
-
-        for host in response.json():
-            hosts.append(host.get('IP'))
+        try:
+            response = requests.get(self.hostinfo_url)
+            if response.status_code == 200:
+                for host in response.json():
+                    hosts.append(host.get('IP'))
+            else:
+                logger.error(f'Hostinfo error: {response.content}')
+        except Exception as err:
+            logger.error(f'Hostinfo connection error: {err}')
 
         return hosts
 
@@ -239,7 +242,7 @@ class Health():
         err = stderr.read().decode("utf-8")
 
         if  err != "":
-            self._log(f'Load Average Error: {err}')
+            self._log(f'Load Average Error: {err}', "error")
             return 'error'
 
         return float(out.split(" ")[:3][0])
@@ -251,7 +254,7 @@ class Health():
         err = stderr.read().decode("utf-8")
 
         if  err != "":
-            self._log(f'Open Connections Error: {err}')
+            self._log(f'Open Connections Error: {err}', "error")
             return 'error'
 
         return int(out.replace("\n", ""))
@@ -262,7 +265,7 @@ class Health():
         err = stderr.read().decode("utf-8")
 
         if  err != "":
-            self._log(f'CPU Usage Error: {err}')
+            self._log(f'CPU Usage Error: {err}', "error")
             return 'error'
 
         idle = float(out[-6:].replace("\n", ""))
@@ -283,7 +286,8 @@ class Health():
                     password=self.ssh_password,
                     timeout=5
                 )
-            except timeout:
+            except Exception as err:
+                logger.error(f'SSH connection with {host} error: {err}')
                 continue
 
             yield {

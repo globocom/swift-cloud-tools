@@ -46,7 +46,6 @@ class WeightHandler:
         dc_w, gcp_w = self.health.get_dns_weight()
         self.current_dccm_weight = dc_w
         self.current_gcp_weight = gcp_w
-
         current = self.current_level
         self._log(f'Current DNS Weight -> Globo: {dc_w}, GCP: {gcp_w} ({current.upper()})')
 
