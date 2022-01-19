@@ -284,7 +284,9 @@ class Health():
                     host,
                     username=self.ssh_username,
                     password=self.ssh_password,
-                    timeout=5
+                    timeout=10,
+                    allow_agent=False,
+                    look_for_keys=False
                 )
             except Exception as err:
                 logger.error(f'SSH connection with {host} error: {err}')
