@@ -20,7 +20,8 @@ class WeightHandler:
             "conn_min": 0,
             "conn_max": 90000,
             "dccm_weight": 255,
-            "gcp_weight": 1
+            "gcp_weight": 1,
+            "gcp_weight_max": 19
         },
         "medium": {
             "cpu_min": 21,
@@ -28,7 +29,8 @@ class WeightHandler:
             "conn_min": 90001,
             "conn_max": 180000,
             "dccm_weight": 235,
-            "gcp_weight": 20
+            "gcp_weight": 20,
+            "gcp_weight_max": 54
         },
         "high": {
             "cpu_min": 41,
@@ -36,7 +38,8 @@ class WeightHandler:
             "conn_min": 180001,
             "conn_max": 999999,
             "dccm_weight": 200,
-            "gcp_weight": 55
+            "gcp_weight": 55,
+            "gcp_weight_max": 255
         }
     }
 
@@ -74,9 +77,11 @@ class WeightHandler:
         current = "low"
 
         for level in self.values.keys():
-            items = self.values[level]
+            min_weight = self.values[level].get("gcp_weight")
+            max_weight = self.values[level].get("gcp_weight_max")
 
-            if self.current_gcp_weight == items.get("gcp_weight"):
+            if (self.current_gcp_weight >= min_weight and
+                self.current_gcp_weight <= max_weight):
                 current = level
 
         return current
@@ -155,7 +160,7 @@ async def work():
         weight_handler = WeightHandler(dry_run)
         weight_handler.verify_stats()
 
-        app.logger.info(f'{start_msg} Health task completed\n')
+        app.logger.info(f'{start_msg} Health task completed')
         # app.logger.info('[SERVICE][HEALTH] Sending passive monitoring to zabbix')
         # zabbix.send()
 
