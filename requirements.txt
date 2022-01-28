@@ -21,3 +21,4 @@ py-zabbix==1.1.7
 python-swiftclient==3.5.0
 paramiko==2.8.0
 boto3==1.15.18
+prometheus-api-client==0.5.0

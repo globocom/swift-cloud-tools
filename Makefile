@@ -24,9 +24,6 @@ run_expirer: ## Run expirer
 run_transfer: ## Run transfer
 	@PYTHONPATH=`pwd`:$PYTHONPATH python swift_cloud_tools/server/transfer.py
 
-run_acl_update: ## Run acl update
-	@PYTHONPATH=`pwd`:$PYTHONPATH python swift_cloud_tools/server/acl_update.py
-
 run_health: ## Run health
 	@PYTHONPATH=`pwd`:$PYTHONPATH python swift_cloud_tools/server/health.py
 

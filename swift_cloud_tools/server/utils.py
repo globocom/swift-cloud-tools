@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-import paramiko
+# import paramiko
 import requests
 import subprocess
 import boto3
@@ -15,9 +15,10 @@ from keystoneclient.v3 import client as keystone_client
 from swiftclient import client as swift_client
 from google.oauth2 import service_account
 from google.cloud import storage
+from prometheus_api_client import PrometheusConnect
 
 logger = logging.getLogger(__name__)
-logging.getLogger("paramiko").setLevel(logging.WARNING)
+# logging.getLogger("paramiko").setLevel(logging.WARNING)
 logging.getLogger("boto3").setLevel(logging.WARNING)
 
 
@@ -174,8 +175,9 @@ class Health():
 
     def __init__(self):
         self.hostinfo_url = app.config.get('HOST_INFO_URL')
-        self.ssh_username = app.config.get('SSH_USERNAME')
-        self.ssh_password = app.config.get('SSH_PASSWORD')
+        # self.ssh_username = app.config.get('SSH_USERNAME')
+        # self.ssh_password = app.config.get('SSH_PASSWORD')
+        self.prometheus = PrometheusConnect(url=app.config.get('PROMETHEUS_URL'), disable_ssl=True)
 
     def _get_fe_hosts(self):
         hosts = []
@@ -184,57 +186,14 @@ class Health():
             response = requests.get(self.hostinfo_url)
             if response.status_code == 200:
                 for host in response.json():
-                    hosts.append(host.get('IP'))
+                    # hosts.append(host.get('IP'))
+                    hosts.append(host.get('Nome'))
             else:
                 logger.error(f'Hostinfo error: {response.content}')
         except Exception as err:
             logger.error(f'Hostinfo connection error: {err}')
 
         return hosts
-
-    def acl_update(self):
-        client = paramiko.SSHClient()
-        client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-        client.load_system_host_keys()
-        hosts = self._get_fe_hosts()
-        acl_service_instance = app.config.get('ACL_SERVICE_INSTANCE')
-
-        if not hosts:
-            return 'error'
-
-        for host in hosts:
-            try:
-                client.connect(
-                    host,
-                    username=self.ssh_username,
-                    password=self.ssh_password,
-                    timeout=5
-                )
-            except timeout:
-                process = subprocess.Popen(['tsuru',
-                                            'acl',
-                                            'rules',
-                                            'add',
-                                            'acl',
-                                            acl_service_instance,
-                                            '--ip',
-                                            '{}/32'.format(host),
-                                            '--port',
-                                            'tcp:22'],
-                                           stdout=subprocess.PIPE,
-                                           universal_newlines=True)
-
-                while True:
-                    output = process.stdout.readline()
-                    print(output.strip())
-                    # Do something else
-                    return_code = process.poll()
-                    if return_code is not None:
-                        print('RETURN CODE', return_code)
-                        # Process has finished, read rest of the output
-                        for output in process.stdout.readlines():
-                            print(output.strip())
-                        break
 
     def load_avg(self, host_ssh_client):
         _, stdout, stderr = host_ssh_client.exec_command("cat /proc/loadavg")
@@ -247,55 +206,72 @@ class Health():
 
         return float(out.split(" ")[:3][0])
 
-    def open_connections(self, host_ssh_client):
-        _, stdout, stderr = host_ssh_client.exec_command(
-            "/usr/sbin/ss -o state established '( sport = :8080 or sport = :8043 )' | wc -l")
-        out = stdout.read().decode("utf-8")
-        err = stderr.read().decode("utf-8")
+    # def open_connections(self, host_ssh_client):
+    #     _, stdout, stderr = host_ssh_client.exec_command(
+    #         "/usr/sbin/ss -o state established '( sport = :8080 or sport = :8043 )' | wc -l")
+    #     out = stdout.read().decode("utf-8")
+    #     err = stderr.read().decode("utf-8")
 
-        if  err != "":
-            self._log(f'Open Connections Error: {err}', "error")
-            return 'error'
+    #     if  err != "":
+    #         self._log(f'Open Connections Error: {err}', "error")
+    #         return 'error'
 
-        return int(out.replace("\n", ""))
+    #     return int(out.replace("\n", ""))
 
-    def cpu_usage(self, host_ssh_client):
-        _, stdout, stderr = host_ssh_client.exec_command("mpstat")
-        out = stdout.read().decode("utf-8")
-        err = stderr.read().decode("utf-8")
+    def open_connections(self, host):
+        label_config = {'instance': '{}:9100'.format(host)}
+        metric = self.prometheus.get_current_metric_value(
+            metric_name='node_netstat_Tcp_CurrEstab',
+            label_config=label_config)
 
-        if  err != "":
-            self._log(f'CPU Usage Error: {err}', "error")
-            return 'error'
+        return int(metric[0].get('value')[1])
 
-        idle = float(out[-6:].replace("\n", ""))
+    # def cpu_usage(self, host_ssh_client):
+    #     _, stdout, stderr = host_ssh_client.exec_command("mpstat")
+    #     out = stdout.read().decode("utf-8")
+    #     err = stderr.read().decode("utf-8")
 
-        return float("{:.2f}".format(100 - idle))
+    #     if  err != "":
+    #         self._log(f'CPU Usage Error: {err}', "error")
+    #         return 'error'
+
+    #     idle = float(out[-6:].replace("\n", ""))
+
+    #     return float("{:.2f}".format(100 - idle))
+
+    def cpu_usage(self, host):
+        query = '100 - (avg (rate(node_cpu_seconds_total{instance="' + host + ':9100", mode="idle"}[1m])) * 100)'
+        metric = self.prometheus.custom_query(query=query)
+        idle = float(metric[0].get('value')[1])
+
+        return float("{:.2f}".format(idle))
 
     def stats(self):
-        ssh_client = paramiko.SSHClient()
-        ssh_client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+        # ssh_client = paramiko.SSHClient()
+        # ssh_client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
         # ssh_client.load_system_host_keys()
         hosts = self._get_fe_hosts()
 
         for host in hosts:
-            try:
-                ssh_client.connect(
-                    host,
-                    username=self.ssh_username,
-                    password=self.ssh_password,
-                    timeout=10,
-                    allow_agent=False,
-                    look_for_keys=False
-                )
-            except Exception as err:
-                logger.error(f'SSH connection with {host} error: {err}')
-                continue
+            # try:
+            #     ssh_client.connect(
+            #         host,
+            #         username=self.ssh_username,
+            #         password=self.ssh_password,
+            #         timeout=10,
+            #         allow_agent=False,
+            #         look_for_keys=False
+            #     )
+            # except Exception as err:
+            #     logger.error(f'SSH connection with {host} error: {err}')
+            #     continue
 
             yield {
                 "host": host,
-                "cpu": self.cpu_usage(ssh_client),
-                "connections": self.open_connections(ssh_client)
+                # "cpu": self.cpu_usage(ssh_client),
+                "cpu": self.cpu_usage(host),
+                # "connections": self.open_connections(ssh_client),
+                "connections": self.open_connections(host)
             }
 
     def set_dns_weight(self, weight_dccm, weight_gcp):

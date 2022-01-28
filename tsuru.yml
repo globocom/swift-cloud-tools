@@ -6,8 +6,3 @@ healthcheck:
   allowed_failures: 5
   use_in_router: true
   router_body: WORKING
-
-hooks:
-  build:
-    - sudo cp -r .tsuru/ /home/ubuntu
-    - sudo mv tsuru /usr/bin/

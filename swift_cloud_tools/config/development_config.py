@@ -25,9 +25,10 @@ TSURU_USERNAME = os.environ.get("TSURU_USERNAME")
 TSURU_PASSWORD = os.environ.get("TSURU_PASSWORD")
 
 HOST_INFO_URL = os.environ.get("HOST_INFO_URL")
+PROMETHEUS_URL = os.environ.get("PROMETHEUS_URL")
 
-SSH_USERNAME = os.environ.get("SSH_USERNAME")
-SSH_PASSWORD = os.environ.get("SSH_PASSWORD")
+# SSH_USERNAME = os.environ.get("SSH_USERNAME")
+# SSH_PASSWORD = os.environ.get("SSH_PASSWORD")
 
 AWS_HOSTED_ZONE = os.environ.get('AWS_HOSTED_ZONE')
 
