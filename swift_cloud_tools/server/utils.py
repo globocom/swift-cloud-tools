@@ -177,7 +177,7 @@ class Health():
         self.hostinfo_url = app.config.get('HOST_INFO_URL')
         # self.ssh_username = app.config.get('SSH_USERNAME')
         # self.ssh_password = app.config.get('SSH_PASSWORD')
-        self.prometheus = PrometheusConnect(url=app.config.get('PROMETHEUS_URL'), disable_ssl=True)
+        self.prometheus = PrometheusConnect(url=app.config.get('PROMETHEUS_URL'), disable_ssl=False)
 
     def _get_fe_hosts(self):
         hosts = []

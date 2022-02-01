@@ -20,9 +20,6 @@ KEYSTONE_ADMIN_URL = os.environ.get("KEYSTONE_ADMIN_URL")
 API_KEY = os.environ.get("API_KEY")
 X_CLOUD_BYPASS = os.environ.get("X_CLOUD_BYPASS")
 
-TSURU_USERNAME = os.environ.get("TSURU_USERNAME")
-TSURU_PASSWORD = os.environ.get("TSURU_PASSWORD")
-
 HOST_INFO_URL = os.environ.get("HOST_INFO_URL")
 PROMETHEUS_URL = os.environ.get("PROMETHEUS_URL")
 
@@ -30,8 +27,6 @@ PROMETHEUS_URL = os.environ.get("PROMETHEUS_URL")
 # SSH_PASSWORD = os.environ.get("SSH_PASSWORD")
 
 AWS_HOSTED_ZONE = os.environ.get('AWS_HOSTED_ZONE')
-
-ACL_SERVICE_INSTANCE = os.environ.get('ACL_SERVICE_INSTANCE')
 
 HEALTH_DNS = os.environ.get("HEALTH_DNS")
 HEALTH_DCCM_IP = os.environ.get("HEALTH_DCCM_IP")
