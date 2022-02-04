@@ -218,13 +218,25 @@ class Health():
 
     #     return int(out.replace("\n", ""))
 
-    def open_connections(self, host):
+    def open_connections(self, host, retry=0):
         label_config = {'instance': '{}:9100'.format(host)}
         metric = self.prometheus.get_current_metric_value(
             metric_name='node_netstat_Tcp_CurrEstab',
             label_config=label_config)
 
-        return int(metric[0].get('value')[1])
+        try:
+            connections = int(metric[0].get('value')[1])
+        except Exception as err:
+            if retry < 3:
+                retry += 1
+                self._log(f'Open connections error: {err}', "error")
+                self._log(f'Open connections metric: {metric}', "error")
+                self._log(f'Retrying open connections... {retry}', "error")
+                return self.open_connections(host, retry)
+
+            return 'error'
+
+        return connections
 
     # def cpu_usage(self, host_ssh_client):
     #     _, stdout, stderr = host_ssh_client.exec_command("mpstat")
@@ -239,10 +251,21 @@ class Health():
 
     #     return float("{:.2f}".format(100 - idle))
 
-    def cpu_usage(self, host):
+    def cpu_usage(self, host, retry=0):
         query = '100 - (avg (rate(node_cpu_seconds_total{instance="' + host + ':9100", mode="idle"}[1m])) * 100)'
         metric = self.prometheus.custom_query(query=query)
-        idle = float(metric[0].get('value')[1])
+
+        try:
+            idle = float(metric[0].get('value')[1])
+        except Exception as err:
+            if retry < 3:
+                retry += 1
+                self._log(f'Cpu usage error: {err}', "error")
+                self._log(f'Cpu usage metric: {metric}', "error")
+                self._log(f'Retry cpu usage... {retry}', "error")
+                return self.cpu_usage(host, retry)
+
+            return 'error'
 
         return float("{:.2f}".format(idle))
 
