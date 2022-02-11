@@ -47,5 +47,5 @@ class Zabbix():
                     app.logger.error('[SERVICE][ZABBIX] Failed to send passive monitoring')
             except AttributeError:
                 app.logger.error('[SERVICE][ZABBIX] Failure to verify passive monitoring return')
-        except Exception as e:
-            app.logger.error('[SERVICE][ZABBIX] Failed to send passive monitoring')
+        except Exception as err:
+            app.logger.error(f'[SERVICE][ZABBIX] Send passive monitoring error: {err}')
