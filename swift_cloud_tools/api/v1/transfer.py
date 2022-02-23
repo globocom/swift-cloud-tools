@@ -80,27 +80,11 @@ class TransferStatus(Resource):
     def get(self, project_id):
         """Returns a project transfer item."""
 
-        status = None
         tp = TransferProject.find_transfer_project(project_id)
-
         if not tp:
-            return {'status': 'Migração não inicializada'}, 200
+            return {'message': 'Project not found'}, 404
 
-        item = tp.to_dict()
-
-        if not item.get('initial_date') and not item.get('final_date'):
-            status = {'status': 'Aguardando migração'}
-
-        if item.get("initial_date") and not item.get("final_date"):
-            count_swift = item.get('object_count_swift')
-            count_gcp = item.get('count_error') + item.get('object_count_gcp')
-            progress = (100 * count_gcp) / count_swift
-            status = {'status': 'Migrando', 'progress': int(progress)}
-
-        if item.get("final_date"):
-            status = {'status': 'Migração concluída'}
-
-        return status, 200
+        return tp.to_dict()
 
 
 @ns.route('/status')
