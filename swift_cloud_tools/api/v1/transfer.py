@@ -101,3 +101,43 @@ class TransferStatus(Resource):
             status = {'status': 'Migração concluída'}
 
         return status, 200
+
+
+@ns.route('/status')
+class TransferStatusOverall(Resource):
+
+    @is_authenticated
+    def get(self):
+        """Returns an overall status of transfers."""
+
+        page = int(request.args.get('page', 1))
+        per_page = int(request.args.get('per_page', 50))
+        tp = TransferProject.query.paginate(page, per_page)
+
+        return {
+            "page": page,
+            "per_page": per_page,
+            "pages": tp.pages,
+            "total": tp.total,
+            "items": [i.to_dict() for i in tp.items]
+        }
+
+    @is_authenticated
+    def post(self):
+        """Returns an overall status of transfers filtered by projects."""
+
+        params = request.get_json()
+
+        if not params and request.data:
+            params = json.loads(request.data)
+
+        if not params:
+            msg = 'incorrect parameters'
+            return Response(msg, mimetype="text/plain", status=422)
+
+        projects = params.get("projects")
+
+        tp = TransferProject.query.filter(
+            TransferProject.project_id.in_(projects)).all()
+
+        return [i.to_dict() for i in tp]
