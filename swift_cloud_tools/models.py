@@ -109,8 +109,8 @@ class TransferProject(db.Model, SaveDeleteModel):
     final_date = db.Column(db.DateTime, nullable=True)
 
     def __init__(self, project_id, project_name, environment, container_count_swift=None,
-                 object_count_swift=None, bytes_used_swift=None, last_object=None, count_error=None, 
-                 container_count_gcp=None, object_count_gcp=None, bytes_used_gcp=None, 
+                 object_count_swift=None, bytes_used_swift=None, last_object=None, count_error=None,
+                 container_count_gcp=None, object_count_gcp=None, bytes_used_gcp=None,
                  initial_date=None, final_date=None):
         self.project_id = project_id
         self.project_name = project_name
@@ -127,7 +127,21 @@ class TransferProject(db.Model, SaveDeleteModel):
         self.final_date = final_date
 
     def to_dict(self):
-        return {c.name: getattr(self, c.name) for c in self.__table__.columns}
+        return {
+            "project_id": self.project_id,
+            "project_name": self.project_name,
+            "environment": self.environment,
+            "container_count_swift": self.container_count_swift,
+            "object_count_swift": self.object_count_swift,
+            "bytes_used_swift": self.bytes_used_swift,
+            "last_object": self.last_object,
+            "count_error": self.count_error,
+            "container_count_gcp": self.container_count_gcp,
+            "object_count_gcp": self.object_count_gcp,
+            "bytes_used_gcp": self.bytes_used_gcp,
+            "initial_date": datetime.strftime(self.initial_date, "%Y-%m-%d %H:%M:%S"),
+            "final_date": datetime.strftime(self.final_date, "%Y-%m-%d %H:%M:%S")
+        }
 
     def find_transfer_project(project_id):
         transfer_project = TransferProject.query.filter(
