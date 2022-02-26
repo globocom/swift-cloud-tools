@@ -122,16 +122,14 @@ class TransferStatusOverall(Resource):
     def post(self):
         """Returns an overall status of transfers filtered by projects."""
 
-        params = request.get_json()
+        projects = request.get_json()
 
-        if not params and request.data:
-            params = json.loads(request.data)
+        if not projects and request.data:
+            projects = json.loads(request.data)
 
-        if not params:
+        if not projects:
             msg = 'incorrect parameters'
             return Response(msg, mimetype="text/plain", status=422)
-
-        projects = params.get("projects")
 
         tp = TransferProject.query.filter(
             TransferProject.project_id.in_(projects)).all()
