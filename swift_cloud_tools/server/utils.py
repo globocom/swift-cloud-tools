@@ -1,5 +1,4 @@
 # -*- coding: utf-8 -*-
-# import paramiko
 import requests
 import subprocess
 import boto3
@@ -18,7 +17,6 @@ from google.cloud import storage
 from prometheus_api_client import PrometheusConnect
 
 logger = logging.getLogger(__name__)
-# logging.getLogger("paramiko").setLevel(logging.WARNING)
 logging.getLogger("boto3").setLevel(logging.WARNING)
 
 
@@ -175,8 +173,6 @@ class Health():
 
     def __init__(self):
         self.hostinfo_url = app.config.get('HOST_INFO_URL')
-        # self.ssh_username = app.config.get('SSH_USERNAME')
-        # self.ssh_password = app.config.get('SSH_PASSWORD')
         self.prometheus = PrometheusConnect(url=app.config.get('PROMETHEUS_URL'), disable_ssl=False)
 
     def _get_fe_hosts(self):
@@ -186,7 +182,6 @@ class Health():
             response = requests.get(self.hostinfo_url)
             if response.status_code == 200:
                 for host in response.json():
-                    # hosts.append(host.get('IP'))
                     hosts.append(host.get('Nome'))
             else:
                 logger.error(f'Hostinfo error: {response.content}')
@@ -205,18 +200,6 @@ class Health():
             return 'error'
 
         return float(out.split(" ")[:3][0])
-
-    # def open_connections(self, host_ssh_client):
-    #     _, stdout, stderr = host_ssh_client.exec_command(
-    #         "/usr/sbin/ss -o state established '( sport = :8080 or sport = :8043 )' | wc -l")
-    #     out = stdout.read().decode("utf-8")
-    #     err = stderr.read().decode("utf-8")
-
-    #     if  err != "":
-    #         self._log(f'Open Connections Error: {err}', "error")
-    #         return 'error'
-
-    #     return int(out.replace("\n", ""))
 
     def open_connections(self, host, retry=0):
         label_config = {'instance': '{}:9100'.format(host)}
@@ -238,19 +221,6 @@ class Health():
 
         return connections
 
-    # def cpu_usage(self, host_ssh_client):
-    #     _, stdout, stderr = host_ssh_client.exec_command("mpstat")
-    #     out = stdout.read().decode("utf-8")
-    #     err = stderr.read().decode("utf-8")
-
-    #     if  err != "":
-    #         self._log(f'CPU Usage Error: {err}', "error")
-    #         return 'error'
-
-    #     idle = float(out[-6:].replace("\n", ""))
-
-    #     return float("{:.2f}".format(100 - idle))
-
     def cpu_usage(self, host, retry=0):
         query = '100 - (avg (rate(node_cpu_seconds_total{instance="' + host + ':9100", mode="idle"}[1m])) * 100)'
         metric = self.prometheus.custom_query(query=query)
@@ -270,30 +240,12 @@ class Health():
         return float("{:.2f}".format(idle))
 
     def stats(self):
-        # ssh_client = paramiko.SSHClient()
-        # ssh_client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-        # ssh_client.load_system_host_keys()
         hosts = self._get_fe_hosts()
 
         for host in hosts:
-            # try:
-            #     ssh_client.connect(
-            #         host,
-            #         username=self.ssh_username,
-            #         password=self.ssh_password,
-            #         timeout=10,
-            #         allow_agent=False,
-            #         look_for_keys=False
-            #     )
-            # except Exception as err:
-            #     logger.error(f'SSH connection with {host} error: {err}')
-            #     continue
-
             yield {
                 "host": host,
-                # "cpu": self.cpu_usage(ssh_client),
                 "cpu": self.cpu_usage(host),
-                # "connections": self.open_connections(ssh_client),
                 "connections": self.open_connections(host)
             }
 
