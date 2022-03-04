@@ -1,7 +1,4 @@
-.PHONY: help setup clean run tests
-
-# Version package
-VERSION=$(shell python -c 'import swift_cloud_tools; print swift_cloud_tools.VERSION')
+.PHONY: help setup clean run tests tests_ci deploy_dev
 
 PROJECT_HOME = "`pwd`"
 
@@ -17,15 +14,6 @@ clean: ## Clear *.pyc files, etc
 
 run: ## Run a development web server
 	@PYTHONPATH=`pwd`:$PYTHONPATH python run.py
-
-run_expirer: ## Run expirer
-	@PYTHONPATH=`pwd`:$PYTHONPATH python swift_cloud_tools/server/expirer.py
-
-run_transfer: ## Run transfer
-	@PYTHONPATH=`pwd`:$PYTHONPATH python swift_cloud_tools/server/transfer.py
-
-run_health: ## Run health
-	@PYTHONPATH=`pwd`:$PYTHONPATH python swift_cloud_tools/server/health.py
 
 tests: clean ## Run all tests with coverage
 	@echo "Running the tests..."

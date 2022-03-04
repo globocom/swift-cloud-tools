@@ -1,0 +1,11 @@
+#!/bin/bash
+if [ $# -eq 0 ]
+then
+    echo "run_service: Invalid service name"
+    echo "    usage: run_service <service-name>"
+    echo "    services: expirer, transfer, health"
+    (exit 22)
+else
+    export PYTHONPATH=`pwd`:$PYTHONPATH
+    python "swift_cloud_tools/server/$1.py"
+fi

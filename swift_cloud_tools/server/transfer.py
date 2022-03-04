@@ -26,7 +26,7 @@ async def work():
     while True:
         app.logger.info('[SERVICE][TRANSFER] Transfer task started')
         env = os.environ.get("ENVIRONMENT")
-        workers = int(os.environ.get("WORKERS"))
+        workers = int(os.environ.get("WORKERS", 10))
 
         raws = TransferProject.query.filter(
             TransferProject.environment == env,
