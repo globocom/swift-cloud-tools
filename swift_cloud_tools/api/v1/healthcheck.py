@@ -23,7 +23,7 @@ class Healthcheck(Resource):
 
 
     def _is_db_ok(self):
-        msg = 'ok'
+        msg = 'WORKING'
 
         try:
             engine = create_engine(app.config['SQLALCHEMY_DATABASE_URI'])

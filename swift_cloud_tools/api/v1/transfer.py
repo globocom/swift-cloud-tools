@@ -65,10 +65,6 @@ class TransferItem(Resource):
             return {}, 404
 
         item = tp.to_dict()
-        if item.get('initial_date'):
-            item['initial_date'] = datetime.strftime(item.get('initial_date'), "%Y-%m-%d %H:%M:%S")
-        if item.get('final_date'):
-            item['final_date'] = datetime.strftime(item.get('final_date'), "%Y-%m-%d %H:%M:%S")
 
         return item, 200
 
@@ -126,16 +122,14 @@ class TransferStatusOverall(Resource):
     def post(self):
         """Returns an overall status of transfers filtered by projects."""
 
-        params = request.get_json()
+        projects = request.get_json()
 
-        if not params and request.data:
-            params = json.loads(request.data)
+        if not projects and request.data:
+            projects = json.loads(request.data)
 
-        if not params:
+        if not projects:
             msg = 'incorrect parameters'
             return Response(msg, mimetype="text/plain", status=422)
-
-        projects = params.get("projects")
 
         tp = TransferProject.query.filter(
             TransferProject.project_id.in_(projects)).all()
