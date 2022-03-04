@@ -61,7 +61,7 @@ async def work():
                     transfer_object.final_date = datetime.now()
                     transfer_object.save()
 
-        for raw in raws[:available]:
+        for raw in raws:
             sync = SynchronizeProjects(raw.project_id)
             x = threading.Thread(target=sync.synchronize, args=(raw.project_id,), name=raw.project_id)
             x.start()
