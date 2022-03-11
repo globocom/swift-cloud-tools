@@ -89,6 +89,20 @@ class Swift():
 
         return resp['status'], resp['reason']
 
+    def set_account_meta_cloud_migration(self):
+        try:
+            resp = {}
+            swift_client.post_account(
+                self.storage_url,
+                self.conn.auth_token,
+                response_dict=resp,
+                headers={'X-Account-Meta-Cloud-Migration': 'x'}
+            )
+        except Exception:
+            pass
+
+        return resp['status'], resp['reason']
+
     def get_account(self, marker=None, end_marker=None):
         try:
             return swift_client.get_account(

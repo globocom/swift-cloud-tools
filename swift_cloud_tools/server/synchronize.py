@@ -94,7 +94,7 @@ class SynchronizeProjects():
                 account,
                 location=BUCKET_LOCATION
             )
-            bucket.iam_configuration.uniform_bucket_level_access_enabled = False
+            # bucket.iam_configuration.uniform_bucket_level_access_enabled = False
             bucket.patch()
         except Exception as err:
             self.app.logger.error('[{}] 500 GET Create bucket: {}'.format(
@@ -306,6 +306,19 @@ class SynchronizeProjects():
                 transfer_object.project_name, i,
                 result
             ))
+
+        status, msg = self.swift.set_account_meta_cloud_migration()
+
+        self.app.logger.info('========================================================')
+        self.app.logger.info("[{}] {} SET account_meta_cloud_migration 'AUTH_{}': {}".format(
+            transfer_object.project_name,
+            status,
+            project_id,
+            msg
+        ))
+
+        if status != 204:
+            return Response(msg, mimetype="text/plain", status=status)
 
 
     def send_container(self, app, gcp_client, containers, transfer, transfer_object, result, counts, index):
