@@ -127,7 +127,7 @@ class TransferProject(db.Model, SaveDeleteModel):
         self.final_date = final_date
 
     def to_dict(self):
-        return {
+        tp = {
             "project_id": self.project_id,
             "project_name": self.project_name,
             "environment": self.environment,
@@ -139,9 +139,19 @@ class TransferProject(db.Model, SaveDeleteModel):
             "container_count_gcp": self.container_count_gcp,
             "object_count_gcp": self.object_count_gcp,
             "bytes_used_gcp": self.bytes_used_gcp,
-            "initial_date": datetime.strftime(self.initial_date, "%Y-%m-%d %H:%M:%S"),
-            "final_date": datetime.strftime(self.final_date, "%Y-%m-%d %H:%M:%S")
+            "initial_date": "",
+            "final_date": ""
         }
+
+        if self.initial_date:
+            tp["initial_date"] = datetime.strftime(
+                self.initial_date, "%Y-%m-%d %H:%M:%S")
+
+        if self.final_date:
+            tp["final_date"] = datetime.strftime(
+                self.final_date, "%Y-%m-%d %H:%M:%S")
+
+        return tp
 
     def find_transfer_project(project_id):
         transfer_project = TransferProject.query.filter(
