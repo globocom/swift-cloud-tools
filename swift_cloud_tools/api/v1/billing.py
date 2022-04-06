@@ -1,4 +1,6 @@
 # -*- coding: utf-8 -*-
+import json
+
 from flask import Response
 from flask_restplus import Resource
 from flask import current_app as app
@@ -26,4 +28,4 @@ class BillingSkuPriceFromService(Resource):
             return Response(err, mimetype="text/plain", status=500)
 
         app.logger.error('[API] {} GET Billing sku price from service: {}'.format(200, price))
-        return Response(str(price), mimetype="text/plain", status=200)
+        return Response(json.dumps(price), mimetype="application/json", status=200)
