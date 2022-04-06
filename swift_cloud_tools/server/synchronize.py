@@ -67,6 +67,28 @@ class SynchronizeProjects():
 
         transfer_object = TransferProject.find_transfer_project(project_id)
 
+        storage_client = google.get_storage_client()
+        account = 'auth_{}'.format(project_id)
+
+        try:
+            bucket = storage_client.get_bucket(
+                account,
+                timeout=30
+            )
+        except NotFound:
+            bucket = storage_client.create_bucket(
+                account,
+                location=BUCKET_LOCATION
+            )
+            # bucket.iam_configuration.uniform_bucket_level_access_enabled = False
+            bucket.patch()
+        except Exception as err:
+            self.app.logger.error('[{}] 500 GET Create bucket: {}'.format(
+                transfer_object.project_name,
+                err
+            ))
+            return Response(err, mimetype="text/plain", status=500)
+
         status, msg = self.swift.set_account_meta_cloud()
 
         self.app.logger.info('========================================================')
@@ -81,27 +103,6 @@ class SynchronizeProjects():
             return Response(msg, mimetype="text/plain", status=status)
 
         time.sleep(5)
-
-        gcp_client = google.get_gcp_client()
-        account = 'auth_{}'.format(project_id)
-        try:
-            bucket = gcp_client.get_bucket(
-                account,
-                timeout=30
-            )
-        except NotFound:
-            bucket = gcp_client.create_bucket(
-                account,
-                location=BUCKET_LOCATION
-            )
-            # bucket.iam_configuration.uniform_bucket_level_access_enabled = False
-            bucket.patch()
-        except Exception as err:
-            self.app.logger.error('[{}] 500 GET Create bucket: {}'.format(
-                transfer_object.project_name,
-                err
-            ))
-            return Response(err, mimetype="text/plain", status=500)
 
         if transfer_object.last_object:
             resume = True
@@ -222,7 +223,7 @@ class SynchronizeProjects():
 
                 for i in range(len(threads)):
                     time.sleep(0.5)
-                    threads[i] = Thread(target=self.send_container, args=(self.app, gcp_client, parts[i], transfer, transfer_object, results, counts, i))
+                    threads[i] = Thread(target=self.send_container, args=(self.app, storage_client, parts[i], transfer, transfer_object, results, counts, i))
                     threads[i].start()
                 for i in range(len(threads)):
                     threads[i].join()
@@ -321,19 +322,19 @@ class SynchronizeProjects():
             return Response(msg, mimetype="text/plain", status=status)
 
 
-    def send_container(self, app, gcp_client, containers, transfer, transfer_object, result, counts, index):
+    def send_container(self, app, storage_client, containers, transfer, transfer_object, result, counts, index):
         error = False
         container_name = None
         account = 'auth_{}'.format(self.project_id)
 
         try:
-            bucket = gcp_client.get_bucket(
+            bucket = storage_client.get_bucket(
                 account,
                 timeout=30
             )
         except TransportError:
             try:
-                bucket = gcp_client.get_bucket(
+                bucket = storage_client.get_bucket(
                     account,
                     timeout=30
                 )
@@ -345,7 +346,7 @@ class SynchronizeProjects():
                 ))
         except requests.exceptions.ReadTimeout as err:
             try:
-                bucket = gcp_client.get_bucket(
+                bucket = storage_client.get_bucket(
                     account,
                     timeout=30
                 )

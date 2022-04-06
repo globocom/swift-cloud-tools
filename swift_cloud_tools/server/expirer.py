@@ -13,7 +13,7 @@ from swift_cloud_tools import create_app
 async def work():
     google = Google()
     zabbix = Zabbix(os.environ.get("ZBX_PASSIVE_MONITOR_EXPIRY"))
-    gcp_client = google.get_gcp_client()
+    storage_client = google.get_storage_client()
     app = create_app('config/{}_config.py'.format(os.environ.get("FLASK_CONFIG")))
     ctx = app.app_context()
     ctx.push()
@@ -21,14 +21,14 @@ async def work():
     while True:
         app.logger.info('[SERVICE][EXPIRER] Expire task started')
 
-        if not gcp_client:
-            gcp_client = google.get_gcp_client()
+        if not storage_client:
+            storage_client = google.get_storage_client()
 
         current_time = datetime.now()
         raws = ExpiredObject.query.filter(ExpiredObject.date <= current_time).all()
 
         for raw in raws:
-            bucket = gcp_client.get_bucket(raw.account)
+            bucket = storage_client.get_bucket(raw.account)
             obj_path = "{}/{}".format(raw.container, raw.obj)
 
             if not bucket or not bucket.exists():

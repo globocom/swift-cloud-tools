@@ -14,6 +14,7 @@ from keystoneclient.v3 import client as keystone_client
 from swiftclient import client as swift_client
 from google.oauth2 import service_account
 from google.cloud import storage
+from google.cloud import billing_v1
 from prometheus_api_client import PrometheusConnect
 
 logger = logging.getLogger(__name__)
@@ -42,12 +43,40 @@ class Google():
             ['https://www.googleapis.com/auth/cloud-platform']
         )
 
-    def get_gcp_client(self):
+    def get_storage_client(self):
         credentials = self._get_credentials()
         return storage.Client(
             credentials=credentials,
             client_options={'api_endpoint': os.environ.get("GCS_API_ACCESS_ENDPOINT")}
         )
+
+    def get_billing_client(self):
+        credentials = self._get_credentials()
+        return billing_v1.CloudCatalogClient(
+            credentials=credentials
+        )
+
+    def get_sku_price_from_service(self, service, sku, amount):
+        billing_client = self.get_billing_client()
+        request = billing_v1.ListSkusRequest(parent='services/{}'.format(service),)
+        skus = billing_client.list_skus(request=request)
+        name = 'services/{}/skus/{}'.format(service, sku)
+        price = 0.0
+        currency = ''
+
+        for item in skus:
+            if item.name == name:
+                pricing_info = item.pricing_info[0]
+                tiered_rates = pricing_info.pricing_expression.tiered_rates[0]
+                unit_price = tiered_rates.unit_price
+                price = unit_price.nanos / 1000000000
+                currency = unit_price.currency_code
+                break
+
+        amount_gb = ((int(amount) / 1024) / 1024) / 1024
+        total = price * amount_gb
+
+        return {'currency': currency, 'price': f'{total:.6f}'}
 
 
 class Keystone():
