@@ -250,6 +250,9 @@ class Health():
             metric_name='node_netstat_Tcp_CurrEstab',
             label_config=label_config)
 
+        if not metric:
+            return 0
+
         try:
             connections = int(metric[0].get('value')[1])
         except Exception as err:
@@ -267,6 +270,9 @@ class Health():
     def cpu_usage(self, host, retry=0):
         query = '100 - (avg (rate(node_cpu_seconds_total{instance="' + host + ':9100", mode="idle"}[1m])) * 100)'
         metric = self.prometheus.custom_query(query=query)
+
+        if not metric:
+            return 0.0
 
         try:
             idle = float(metric[0].get('value')[1])

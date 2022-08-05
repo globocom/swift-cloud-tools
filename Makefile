@@ -25,3 +25,6 @@ tests_ci: clean ## Run all tests
 
 deploy_dev: ## Deploy the app to dev
 	tsuru app-deploy . -a swift-cloud-tools-dev
+
+deploy_qa: ## Deploy the app to qa
+	tsuru app-deploy . -a swift-cloud-tools-qa
