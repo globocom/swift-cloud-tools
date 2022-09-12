@@ -19,7 +19,7 @@ from http.client import IncompleteRead
 from swift_cloud_tools.server.utils import Keystone, Swift, Google, Transfer
 from swift_cloud_tools.models import TransferProject, TransferProjectError, db
 
-BUCKET_LOCATION = 'SOUTHAMERICA-EAST1'
+BUCKET_LOCATION = os.environ.get('BUCKET_LOCATION', 'US-EAST1')
 RESERVED_META = [
     'x-delete-at',
     'x-delete-after',
