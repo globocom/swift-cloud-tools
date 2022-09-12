@@ -28,3 +28,6 @@ deploy_dev: ## Deploy the app to dev
 
 deploy_qa: ## Deploy the app to qa
 	tsuru app-deploy . -a swift-cloud-tools-qa
+
+deploy_prod: ## Deploy the app to prod
+	tsuru app-deploy . -a swift-cloud-tools
