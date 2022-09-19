@@ -9,9 +9,8 @@ from datetime import datetime
 from flask import Response
 from threading import Thread
 from swift_cloud_tools import create_app
-from google.cloud.exceptions import NotFound
 from google.auth.exceptions import TransportError
-from google.api_core.exceptions import BadRequest
+from google.api_core.exceptions import BadRequest, NotFound
 from swiftclient import client as swift_client
 from keystoneauth1.exceptions.auth import AuthorizationFailure
 from http.client import IncompleteRead
