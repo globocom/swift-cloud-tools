@@ -90,7 +90,9 @@ class TransferStatus(Resource):
         if item.get("initial_date") and not item.get("final_date"):
             count_swift = item.get('object_count_swift')
             count_gcp = item.get('count_error') + item.get('object_count_gcp')
-            progress = (100 * count_gcp) / count_swift
+            progress = 100
+            if count_swift > 0:
+                progress = (100 * count_gcp) / count_swift
             status = {'status': 'Migrando', 'progress': int(progress)}
 
         if item.get("final_date"):
