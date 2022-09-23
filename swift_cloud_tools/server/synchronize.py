@@ -161,11 +161,11 @@ class SynchronizeProjects():
         object_count = account_stat.get('x-account-object-count', 0)
         bytes_used = account_stat.get('x-account-bytes-used', 0)
 
-        bucket.labels = {
-            'container-count': container_count,
-            'object-count': object_count,
-            'bytes-used': bytes_used
-        }
+        labels = bucket.labels
+        labels['container-count'] = 0
+        labels['object-count'] = 0
+        labels['bytes-used'] = 0
+        bucket.labels = labels
         bucket.patch()
 
         transfer_object.container_count_swift = int(container_count)
@@ -235,6 +235,11 @@ class SynchronizeProjects():
                     transfer_project.container_count_gcp = transfer.container_count_gcp
                     time.sleep(0.1)
                     db.session.commit()
+
+                    labels = bucket.labels
+                    labels['container-count'] = transfer.container_count_gcp
+                    bucket.labels = labels
+                    bucket.patch()
 
                     transfer_project = None
                     self.app.logger.info("[{}] Finished page container': {} - {}".format(
@@ -550,6 +555,12 @@ class SynchronizeProjects():
         time.sleep(0.1)
         db.session.commit()
 
+        labels = bucket.labels
+        labels['object-count'] = transfer.object_count_gcp
+        labels['bytes-used'] = transfer.bytes_used_gcp
+        bucket.labels = labels
+        bucket.patch()
+
         transfer_project = None
         time.sleep(0.1)
         result[index] = 'ok'
@@ -639,6 +650,12 @@ class SynchronizeProjects():
                     transfer_project.bytes_used_gcp = transfer.bytes_used_gcp
                     time.sleep(0.1)
                     db.session.commit()
+
+                    labels = bucket.labels
+                    labels['object-count'] = transfer.object_count_gcp
+                    labels['bytes-used'] = transfer.bytes_used_gcp
+                    bucket.labels = labels
+                    bucket.patch()
 
                     transfer_project = None
                     self.flush_object = self.FLUSH_OBJECT
@@ -865,6 +882,12 @@ class SynchronizeProjects():
                         transfer_project.bytes_used_gcp = transfer.bytes_used_gcp
                         time.sleep(0.1)
                         db.session.commit()
+
+                        labels = bucket.labels
+                        labels['object-count'] = transfer.object_count_gcp
+                        labels['bytes-used'] = transfer.bytes_used_gcp
+                        bucket.labels = labels
+                        bucket.patch()
 
                         transfer_project = None
                         self.flush_object = self.FLUSH_OBJECT
