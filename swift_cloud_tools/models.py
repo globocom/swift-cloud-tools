@@ -272,3 +272,47 @@ class ContainerInfo(db.Model, SaveDeleteModel):
             'object_count': object_count,
             'containers': containers
         }
+
+
+class ProjectHostname(db.Model, SaveDeleteModel):
+    id = db.Column(db.Integer, primary_key=True)
+    project_id = db.Column(db.String(64), nullable=False)
+    hostname = db.Column(db.String(100), nullable=False)
+    updated = db.Column(db.DateTime, default=datetime.utcnow)
+
+    def __init__(self, project_id=None, hostname=None, updated=None):
+        self.project_id = project_id
+        self.hostname = hostname
+        self.updated = updated
+
+    __table_args__ = (
+        db.UniqueConstraint(project_id, hostname),
+    )
+
+    def find_project_hostname(project_id, hostname):
+        project_hostname = (ProjectHostname.query
+            .filter(func.lower(ProjectHostname.project_id) == project_id)
+            .filter(func.lower(ProjectHostname.hostname) == hostname))
+
+        if project_hostname.count() > 0:
+            return project_hostname.first()
+        else:
+            return None
+
+    def save(self):
+        msg, status = SaveDeleteModel.save(self)
+
+        if status == 201:
+            return "Project '{}' Hostname '{}' created".format(
+                self.project_id, self.hostname), status
+
+        return msg, status
+
+    def delete(self):
+        msg, status = SaveDeleteModel.delete(self)
+
+        if status == 200:
+            return "Project '{}' Hostname '{}' deleted".format(
+                self.project_id, self.hostname), status
+
+        return msg, status

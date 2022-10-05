@@ -4,6 +4,7 @@ import requests
 import time
 import json
 import os
+import gc
 
 from datetime import datetime
 from flask import Response
@@ -31,9 +32,10 @@ RESERVED_META = [
 
 class SynchronizeProjects():
 
-    def __init__(self, project_id):
+    def __init__(self, project_id, hostname):
         self.project_id = project_id
         self.project_name = None
+        self.hostname = hostname
 
         self.transfer_object = TransferProject.find_transfer_project(project_id)
 
@@ -45,11 +47,12 @@ class SynchronizeProjects():
         self.swift = Swift(self.conn, project_id)
         self.FLUSH_OBJECT = int(os.environ.get("FLUSH_OBJECT", "1000"))
 
-    def synchronize(self, project_id):
+    def synchronize(self, project_id, hostname):
         """Get project in swift."""
 
         self.project_id = project_id
         self.flush_object = self.FLUSH_OBJECT
+        self.hostname = hostname
 
         self.app = create_app('config/{}_config.py'.format(os.environ.get("FLASK_CONFIG")))
         ctx = self.app.app_context()
@@ -79,6 +82,14 @@ class SynchronizeProjects():
                 account,
                 location=BUCKET_LOCATION
             )
+
+            labels = bucket.labels
+            labels['account-meta-cloud'] = 'gcp'
+            labels['container-count'] = 0
+            labels['object-count'] = 0
+            labels['bytes-used'] = 0
+            bucket.labels = labels
+
             # bucket.iam_configuration.uniform_bucket_level_access_enabled = False
             bucket.patch()
         except Exception as err:
@@ -88,23 +99,19 @@ class SynchronizeProjects():
             ))
             return Response(err, mimetype="text/plain", status=500)
 
-        status, msg = self.swift.set_account_meta_cloud()
-
         self.app.logger.info('========================================================')
-        self.app.logger.info("[{}] {} SET account_meta_cloud 'AUTH_{}': {}".format(
+        self.app.logger.info("[{}] SET account_meta_cloud 'AUTH_{}'".format(
             transfer_object.project_name,
-            status,
-            project_id,
-            msg
+            project_id
         ))
-
-        if status != 204:
-            return Response(msg, mimetype="text/plain", status=status)
-
-        time.sleep(5)
 
         if transfer_object.last_object:
             resume = True
+
+        self.app.logger.info('[{}] Resume: {}'.format(
+            transfer_object.project_name,
+            resume
+        ))
 
         try:
             if resume:
@@ -157,21 +164,15 @@ class SynchronizeProjects():
             ))
             return Response(err.msg, mimetype="text/plain", status=err.http_status)
 
-        container_count = account_stat.get('x-account-container-count', 0)
-        object_count = account_stat.get('x-account-object-count', 0)
-        bytes_used = account_stat.get('x-account-bytes-used', 0)
+        container_count = int(account_stat.get('x-account-container-count', 0))
+        object_count = int(account_stat.get('x-account-object-count', 0))
+        bytes_used = int(account_stat.get('x-account-bytes-used', 0))
 
-        labels = bucket.labels
-        labels['container-count'] = 0
-        labels['object-count'] = 0
-        labels['bytes-used'] = 0
-        bucket.labels = labels
-        bucket.patch()
-
-        transfer_object.container_count_swift = int(container_count)
-        transfer_object.object_count_swift = int(object_count)
-        transfer_object.bytes_used_swift = int(bytes_used)
-        transfer_object.save()
+        if not resume:
+            transfer_object.container_count_swift = container_count
+            transfer_object.object_count_swift = object_count
+            transfer_object.bytes_used_swift = bytes_used
+            transfer_object.save()
 
         self.app.logger.info('========================================================')
         self.app.logger.info('[{}] Account: AUTH_{}'.format(transfer_object.project_name, project_id))
@@ -179,6 +180,18 @@ class SynchronizeProjects():
         self.app.logger.info('[{}] container_count: {}'.format(transfer_object.project_name, container_count))
         self.app.logger.info('[{}] object_count: {}'.format(transfer_object.project_name, object_count))
         self.app.logger.info('[{}] bytes_used: {}'.format(transfer_object.project_name, bytes_used))
+        self.app.logger.info('[{}] host_name: {}'.format(transfer_object.project_name, self.hostname))
+
+        if resume:
+            self.app.logger.info('========================================================')
+            self.app.logger.info('[{}] Resumed containers: count {}'.format(
+                transfer_object.project_name,
+                len(containers)
+            ))
+            self.app.logger.info('[{}] Resumed containers: {}'.format(
+                transfer_object.project_name,
+                containers
+            ))
 
         if transfer_object:
             transfer.last_object = transfer_object.last_object
@@ -191,7 +204,7 @@ class SynchronizeProjects():
         #              Containers              #
         ########################################
 
-        if not resume:
+        if transfer_object.container_count_gcp < container_count:
             containers_copy = containers.copy()
 
             self.app.logger.info('[{}] ---------------------'.format(transfer_object.project_name))
@@ -239,9 +252,11 @@ class SynchronizeProjects():
                     labels = bucket.labels
                     labels['container-count'] = transfer.container_count_gcp
                     bucket.labels = labels
+                    time.sleep(2)
                     bucket.patch()
 
-                    transfer_project = None
+                    del transfer_project
+                    gc.collect()
                     self.app.logger.info("[{}] Finished page container': {} - {}".format(
                         transfer_object.project_name, i,
                         counts[i]
@@ -281,9 +296,19 @@ class SynchronizeProjects():
         page_size = 1
         parts = []
 
+        self.app.logger.info('========================================================')
+        self.app.logger.info('[{}] Containers: count {}'.format(
+            transfer_object.project_name,
+            len(containers)
+        ))
+        self.app.logger.info('[{}] Containers: {}'.format(
+            transfer_object.project_name,
+            containers
+        ))
+
         if len(containers) > 35:
             percentage_page = float(os.environ.get("PERCENTAGE_PAGE", "0.1"))
-            page_size = int(int(container_count) * percentage_page) or 1
+            page_size = int(container_count * percentage_page) or 1
 
         start = 0
         end = page_size
@@ -486,6 +511,7 @@ class SynchronizeProjects():
                     )
                     transfer_error.save()
 
+        app.logger.info('send_container.....')
         time.sleep(0.1)
         result[index] = 'ok'
 
@@ -559,10 +585,12 @@ class SynchronizeProjects():
         labels['object-count'] = transfer.object_count_gcp
         labels['bytes-used'] = transfer.bytes_used_gcp
         bucket.labels = labels
+        time.sleep(0.1)
         bucket.patch()
 
-        transfer_project = None
-        time.sleep(0.1)
+        del transfer_project
+        gc.collect()
+        time.sleep(0.5)
         result[index] = 'ok'
 
 
@@ -640,8 +668,11 @@ class SynchronizeProjects():
 
                 transfer.last_object = '{}/{}'.format(container, prefix)
                 self.flush_object -= 1
+                del blob
+                gc.collect()
 
                 if self.flush_object <= 0:
+                    self.app.logger.info('flush_object.......')
                     db.session.begin()
                     transfer_project = db.session.query(TransferProject).filter_by(project_id=transfer_object.project_id).first()
                     transfer_project.last_object = transfer.last_object
@@ -657,7 +688,8 @@ class SynchronizeProjects():
                     bucket.labels = labels
                     bucket.patch()
 
-                    transfer_project = None
+                    del transfer_project
+                    gc.collect()
                     self.flush_object = self.FLUSH_OBJECT
 
                 try:
@@ -866,7 +898,9 @@ class SynchronizeProjects():
                         )
                         transfer_error.save()
 
-                    content = None
+                    del content
+                    del blob
+                    gc.collect()
 
                     transfer.object_count_gcp += 1
                     transfer.bytes_used_gcp += obj.get('bytes')
@@ -874,6 +908,7 @@ class SynchronizeProjects():
                     self.flush_object -= 1
 
                     if self.flush_object <= 0:
+                        self.app.logger.info('flush_object.......')
                         db.session.begin()
                         transfer_project = db.session.query(TransferProject).filter_by(project_id=transfer_object.project_id).first()
                         transfer_project.last_object = transfer.last_object
@@ -887,7 +922,9 @@ class SynchronizeProjects():
                         labels['object-count'] = transfer.object_count_gcp
                         labels['bytes-used'] = transfer.bytes_used_gcp
                         bucket.labels = labels
+                        time.sleep(2)
                         bucket.patch()
 
-                        transfer_project = None
+                        del transfer_project
+                        gc.collect()
                         self.flush_object = self.FLUSH_OBJECT
