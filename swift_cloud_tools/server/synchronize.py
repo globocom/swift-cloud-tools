@@ -26,7 +26,8 @@ RESERVED_META = [
     'x-versions-location',
     'x-history-location',
     'x-undelete-enabled',
-    'x-container-sysmeta-undelete-enabled'
+    'x-container-sysmeta-undelete-enabled',
+    'content-encoding'
 ]
 
 
@@ -812,42 +813,41 @@ class SynchronizeProjects():
                         transfer_error.save()
                         continue
 
-                    obj_path = "{}/{}".format(container, obj.get('name'))
-                    blob = bucket.blob(obj_path)
-
-                    if headers.get('cache-control'):
-                        blob.cache_control = headers.get('cache-control')
-
-                    if headers.get('content-encoding'):
-                        blob.content_encoding = headers.get('content-encoding')
-
-                    if headers.get('content-disposition'):
-                        blob.content_disposition = headers.get('content-disposition')
-
-                    metadata = {}
-
-                    meta_keys = list(filter(
-                        lambda x: 'x-object-meta' in x.lower(),
-                        [*headers.keys()]
-                    ))
-
-                    reserved_keys = list(filter(
-                        lambda x: x.lower() in RESERVED_META,
-                        [*headers.keys()]
-                    ))
-
-                    for item in meta_keys:
-                        key = item.lower().split('x-object-meta-')[-1]
-                        metadata[key] = headers.get(item)
-
-                    for item in reserved_keys:
-                        key = item.lower()
-                        metadata[key] = headers.get(item)
-
-                    if len(meta_keys) or len(reserved_keys):
-                        blob.metadata = metadata
-
                     try:
+                        obj_path = "{}/{}".format(container, obj.get('name'))
+                        blob = bucket.blob(obj_path)
+                        metadata = {}
+
+                        if headers.get('cache-control'):
+                            blob.cache_control = headers.get('cache-control')
+
+                        if headers.get('content-encoding'):
+                            metadata['content-encoding'] = headers.get('content-encoding')
+
+                        if headers.get('content-disposition'):
+                            blob.content_disposition = headers.get('content-disposition')
+
+                        meta_keys = list(filter(
+                            lambda x: 'x-object-meta' in x.lower(),
+                            [*headers.keys()]
+                        ))
+
+                        reserved_keys = list(filter(
+                            lambda x: x.lower() in RESERVED_META,
+                            [*headers.keys()]
+                        ))
+
+                        for item in meta_keys:
+                            key = item.lower().split('x-object-meta-')[-1]
+                            metadata[key] = headers.get(item)
+
+                        for item in reserved_keys:
+                            key = item.lower()
+                            metadata[key] = headers.get(item)
+
+                        if len(metadata):
+                            blob.metadata = metadata
+
                         blob.upload_from_string(
                             content,
                             content_type=obj.get('content_type'),
@@ -872,6 +872,7 @@ class SynchronizeProjects():
                             created=datetime.now()
                         )
                         transfer_error.save()
+                        continue
                     except requests.exceptions.ReadTimeout:
                         transfer.count_error += 1
                         self.app.logger.error("[{}] 504 PUT object '{}' {}: ReadTimeout".format(
@@ -884,6 +885,7 @@ class SynchronizeProjects():
                             created=datetime.now()
                         )
                         transfer_error.save()
+                        continue
                     except Exception as err:
                         transfer.count_error += 1
                         self.app.logger.error("[{}] 500 PUT object '{}': {}".format(
@@ -897,6 +899,7 @@ class SynchronizeProjects():
                             created=datetime.now()
                         )
                         transfer_error.save()
+                        continue
 
                     del content
                     del blob
