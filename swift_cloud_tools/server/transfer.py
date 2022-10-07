@@ -45,7 +45,7 @@ async def work():
         running = len(raws)
         available = workers - running
 
-        time.sleep(int(uniform((transfer_time / 4), ((transfer_time / 4) + 15))))
+        time.sleep(int(uniform(10, 20)))
 
         raws = TransferProject.query.filter(
             TransferProject.environment == env,
