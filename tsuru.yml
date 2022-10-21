@@ -6,3 +6,8 @@ healthcheck:
   allowed_failures: 5
   use_in_router: true
   router_body: WORKING
+
+hooks:
+  restart:
+    before:
+      - python generate_conf.py

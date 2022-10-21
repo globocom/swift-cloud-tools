@@ -1,4 +1,0 @@
-hooks:
-  restart:
-    before:
-      - python generate_conf.py

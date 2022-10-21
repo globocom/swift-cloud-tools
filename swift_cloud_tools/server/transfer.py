@@ -6,7 +6,6 @@ import socket
 import copy
 import os
 import time
-import gc
 
 from datetime import datetime
 from random import uniform
@@ -36,27 +35,39 @@ async def work():
         workers = int(os.environ.get("WORKERS", 10))
         hostname = socket.gethostname()
 
-        raws = TransferProject.query.filter(
-            TransferProject.environment == env,
-            TransferProject.initial_date != None,
-            TransferProject.final_date == None
-        ).all()
+        try:
+            raws = TransferProject.query.filter(
+                TransferProject.environment == env,
+                TransferProject.initial_date != None,
+                TransferProject.final_date == None
+            ).all()
+        except Exception as err:
+            app.logger.info("[SERVICE][EXPIRER] 500 Query 'mysql': {}".format(err))
+            continue
 
         running = len(raws)
         available = workers - running
 
-        time.sleep(int(uniform(10, 20)))
+        time.sleep(int(uniform(5, 15)))
 
-        raws = TransferProject.query.filter(
-            TransferProject.environment == env,
-            TransferProject.initial_date == None,
-            TransferProject.final_date == None
-        ).all()
+        try:
+            raws = TransferProject.query.filter(
+                TransferProject.environment == env,
+                TransferProject.initial_date == None,
+                TransferProject.final_date == None
+            ).all()
+        except Exception as err:
+            app.logger.info("[SERVICE][EXPIRER] 500 Query 'mysql': {}".format(err))
+            continue
 
-        projects_hostnames = db.session.query(
-            ProjectHostname.hostname,
-            func.count(ProjectHostname.hostname)
-        ).group_by(ProjectHostname.hostname).all()
+        try:
+            projects_hostnames = db.session.query(
+                ProjectHostname.hostname,
+                func.count(ProjectHostname.hostname)
+            ).group_by(ProjectHostname.hostname).all()
+        except Exception as err:
+            app.logger.info("[SERVICE][EXPIRER] 500 Query 'mysql': {}".format(err))
+            continue
 
         for project_hostname in projects_hostnames:
             hostnames[project_hostname[0]] = project_hostname[1]
@@ -90,32 +101,48 @@ async def work():
             app.logger.info('[SERVICE][TRANSFER] name: {}, isAlive: {}'.format(thread.name, thread.isAlive()))
             if not thread.isAlive():
                 del threads[key]
-                gc.collect()
-                transfer_object = TransferProject.find_transfer_project(key)
+                try:
+                    transfer_object = TransferProject.find_transfer_project(key)
 
-                if transfer_object:
-                    transfer_object.final_date = datetime.now()
-                    transfer_object.save()
+                    if transfer_object:
+                        transfer_object.final_date = datetime.now()
+                        transfer_object.save()
+                except Exception as err:
+                    app.logger.info("[SERVICE][EXPIRER] 500 Save 'mysql': {}".format(err))
+                    continue
 
-                project_hostname = ProjectHostname.find_project_hostname(key, hostname)
+                try:
+                    project_hostname = ProjectHostname.find_project_hostname(key, hostname)
 
-                if project_hostname:
-                    msg, status = project_hostname.delete()
+                    if project_hostname:
+                        msg, status = project_hostname.delete()
+                except Exception as err:
+                    app.logger.info("[SERVICE][EXPIRER] 500 Delete 'mysql': {}".format(err))
+                    continue
 
         for raw in raws[:1]:
             sync = SynchronizeProjects(raw.project_id, hostname)
             x = threading.Thread(target=sync.synchronize, args=(raw.project_id, hostname,), name=raw.project_id)
             x.start()
             threads[raw.project_id] = x
-            raw.initial_date = datetime.now()
-            msg, status = raw.save()
 
-            project_hostname = ProjectHostname(
-                project_id=raw.project_id,
-                hostname=hostname,
-                updated=datetime.now()
-            )
-            msg, status = project_hostname.save()
+            try:
+                raw.initial_date = datetime.now()
+                msg, status = raw.save()
+            except Exception as err:
+                app.logger.info("[SERVICE][EXPIRER] 500 Save 'mysql': {}".format(err))
+                continue
+
+            try:
+                project_hostname = ProjectHostname(
+                    project_id=raw.project_id,
+                    hostname=hostname,
+                    updated=datetime.now()
+                )
+                msg, status = project_hostname.save()
+            except Exception as err:
+                app.logger.info("[SERVICE][EXPIRER] 500 Save 'mysql': {}".format(err))
+                continue
 
         app.logger.info('[SERVICE][TRANSFER] Transfer task completed')
         app.logger.info('[SERVICE][TRANSFER] Sending passive monitoring to zabbix')

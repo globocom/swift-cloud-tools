@@ -4,7 +4,6 @@ import requests
 import time
 import json
 import os
-import gc
 
 from datetime import datetime
 from flask import Response
@@ -12,6 +11,7 @@ from threading import Thread
 from swift_cloud_tools import create_app
 from google.auth.exceptions import TransportError
 from google.api_core.exceptions import BadRequest, NotFound
+from google.api_core.retry import Retry
 from swiftclient import client as swift_client
 from keystoneauth1.exceptions.auth import AuthorizationFailure
 from http.client import IncompleteRead
@@ -38,7 +38,12 @@ class SynchronizeProjects():
         self.project_name = None
         self.hostname = hostname
 
-        self.transfer_object = TransferProject.find_transfer_project(project_id)
+        while True:
+            try:
+                self.transfer_object = TransferProject.find_transfer_project(project_id)
+                break
+            except Exception as err:
+                time.sleep(5)
 
         if self.transfer_object:
             self.project_name = self.transfer_object.project_name
@@ -68,7 +73,13 @@ class SynchronizeProjects():
         transfer = Transfer()
         resume = False
 
-        transfer_object = TransferProject.find_transfer_project(project_id)
+        while True:
+            try:
+                transfer_object = TransferProject.find_transfer_project(project_id)
+                break
+            except Exception as err:
+                self.app.logger.error("[synchronize] 500 Query 'mysql': {}".format(err))
+                time.sleep(5)
 
         storage_client = google.get_storage_client()
         account = 'auth_{}'.format(project_id)
@@ -92,7 +103,8 @@ class SynchronizeProjects():
             bucket.labels = labels
 
             # bucket.iam_configuration.uniform_bucket_level_access_enabled = False
-            bucket.patch()
+            deadline = Retry(deadline=60)
+            bucket.patch(timeout=60, retry=deadline)
         except Exception as err:
             self.app.logger.error('[{}] 500 GET Create bucket: {}'.format(
                 transfer_object.project_name,
@@ -170,10 +182,18 @@ class SynchronizeProjects():
         bytes_used = int(account_stat.get('x-account-bytes-used', 0))
 
         if not resume:
-            transfer_object.container_count_swift = container_count
-            transfer_object.object_count_swift = object_count
-            transfer_object.bytes_used_swift = bytes_used
-            transfer_object.save()
+            while True:
+                try:
+                    transfer_object.container_count_swift = container_count
+                    transfer_object.object_count_swift = object_count
+                    transfer_object.bytes_used_swift = bytes_used
+                    transfer_object.save()
+                    break
+                except Exception as err:
+                    self.app.logger.error("[synchronize] 500 Save 'mysql': {}".format(
+                        err
+                    ))
+                    time.sleep(5)
 
         self.app.logger.info('========================================================')
         self.app.logger.info('[{}] Account: AUTH_{}'.format(transfer_object.project_name, project_id))
@@ -244,20 +264,38 @@ class SynchronizeProjects():
                     time.sleep(0.1)
                     transfer.container_count_gcp += counts[i]
 
-                    db.session.begin()
-                    transfer_project = db.session.query(TransferProject).filter_by(project_id=transfer_object.project_id).first()
-                    transfer_project.container_count_gcp = transfer.container_count_gcp
-                    time.sleep(0.1)
-                    db.session.commit()
+                    count = 0
+                    while True:
+                        try:
+                            if count == 0:
+                                db.session.begin()
+                            transfer_project = db.session.query(TransferProject).filter_by(project_id=transfer_object.project_id).first()
+                            transfer_project.container_count_gcp = transfer.container_count_gcp
+                            time.sleep(0.1)
+                            db.session.commit()
+                            break
+                        except Exception as err:
+                            self.app.logger.error("[synchronize] 500 Save 'mysql': {}".format(
+                                err
+                            ))
+                            time.sleep(5)
+                            count += 1
 
-                    labels = bucket.labels
-                    labels['container-count'] = transfer.container_count_gcp
-                    bucket.labels = labels
-                    time.sleep(2)
-                    bucket.patch()
+                    while True:
+                        try:
+                            labels = bucket.labels
+                            labels['container-count'] = transfer.container_count_gcp
+                            bucket.labels = labels
+                            time.sleep(2)
+                            deadline = Retry(deadline=60)
+                            bucket.patch(timeout=60, retry=deadline)
+                            break
+                        except Exception as err:
+                            self.app.logger.error("[synchronize] 500 Save 'bucket': {}".format(
+                                err
+                            ))
+                            time.sleep(5)
 
-                    del transfer_project
-                    gc.collect()
                     self.app.logger.info("[{}] Finished page container': {} - {}".format(
                         transfer_object.project_name, i,
                         counts[i]
@@ -480,24 +518,40 @@ class SynchronizeProjects():
                         self.project_name,
                         container_name
                     ))
-                    transfer_error = TransferProjectError(
-                        object_error=container_name,
-                        transfer_project_id=transfer_object.id,
-                        created=datetime.now()
-                    )
-                    transfer_error.save()
+                    while True:
+                        try:
+                            transfer_error = TransferProjectError(
+                                object_error=container_name,
+                                transfer_project_id=transfer_object.id,
+                                created=datetime.now()
+                            )
+                            transfer_error.save()
+                            break
+                        except Exception as err:
+                            self.app.logger.error("[synchronize] 500 Save 'mysql': {}".format(
+                                err
+                            ))
+                            time.sleep(5)
                 except requests.exceptions.ReadTimeout:
                     transfer.count_error += 1
                     app.logger.error("[{}] 504 PUT container '{}': ReadTimeout".format(
                         self.project_name,
                         container_name
                     ))
-                    transfer_error = TransferProjectError(
-                        object_error=container_name,
-                        transfer_project_id=transfer_object.id,
-                        created=datetime.now()
-                    )
-                    transfer_error.save()
+                    while True:
+                        try:
+                            transfer_error = TransferProjectError(
+                                object_error=container_name,
+                                transfer_project_id=transfer_object.id,
+                                created=datetime.now()
+                            )
+                            transfer_error.save()
+                            break
+                        except Exception as err:
+                            self.app.logger.error("[synchronize] 500 Save 'mysql': {}".format(
+                                err
+                            ))
+                            time.sleep(5)
                 except Exception as err:
                     transfer.count_error += 1
                     app.logger.error("[{}] 500 PUT container '{}': {}".format(
@@ -505,12 +559,20 @@ class SynchronizeProjects():
                         container_name,
                         err
                     ))
-                    transfer_error = TransferProjectError(
-                        object_error=container_name,
-                        transfer_project_id=transfer_object.id,
-                        created=datetime.now()
-                    )
-                    transfer_error.save()
+                    while True:
+                        try:
+                            transfer_error = TransferProjectError(
+                                object_error=container_name,
+                                transfer_project_id=transfer_object.id,
+                                created=datetime.now()
+                            )
+                            transfer_error.save()
+                            break
+                        except Exception as err:
+                            self.app.logger.error("[synchronize] 500 Save 'mysql': {}".format(
+                                err
+                            ))
+                            time.sleep(5)
 
         app.logger.info('send_container.....')
         time.sleep(0.1)
@@ -573,24 +635,42 @@ class SynchronizeProjects():
             index
         ))
 
-        db.session.begin()
-        transfer_project = db.session.query(TransferProject).filter_by(project_id=transfer_object.project_id).first()
-        transfer_project.last_object = transfer.last_object
-        transfer_project.count_error = transfer.count_error
-        transfer_project.object_count_gcp = transfer.object_count_gcp
-        transfer_project.bytes_used_gcp = transfer.bytes_used_gcp
-        time.sleep(0.1)
-        db.session.commit()
+        count = 0
+        while True:
+            try:
+                if count == 0:
+                    db.session.begin()
+                transfer_project = db.session.query(TransferProject).filter_by(project_id=transfer_object.project_id).first()
+                transfer_project.last_object = transfer.last_object
+                transfer_project.count_error = transfer.count_error
+                transfer_project.object_count_gcp = transfer.object_count_gcp
+                transfer_project.bytes_used_gcp = transfer.bytes_used_gcp
+                time.sleep(0.1)
+                db.session.commit()
+                break
+            except Exception as err:
+                self.app.logger.error("[synchronize] 500 Save 'mysql': {}".format(
+                    err
+                ))
+                time.sleep(5)
+                count += 1
 
-        labels = bucket.labels
-        labels['object-count'] = transfer.object_count_gcp
-        labels['bytes-used'] = transfer.bytes_used_gcp
-        bucket.labels = labels
-        time.sleep(0.1)
-        bucket.patch()
+        while True:
+            try:
+                labels = bucket.labels
+                labels['object-count'] = transfer.object_count_gcp
+                labels['bytes-used'] = transfer.bytes_used_gcp
+                bucket.labels = labels
+                time.sleep(0.1)
+                deadline = Retry(deadline=60)
+                bucket.patch(timeout=60, retry=deadline)
+                break
+            except Exception as err:
+                self.app.logger.error("[synchronize] 500 Save 'bucket': {}".format(
+                    err
+                ))
+                time.sleep(5)
 
-        del transfer_project
-        gc.collect()
         time.sleep(0.5)
         result[index] = 'ok'
 
@@ -630,12 +710,20 @@ class SynchronizeProjects():
                         container,
                         prefix
                     ))
-                    transfer_error = TransferProjectError(
-                        object_error="{}/{}".format(container, prefix),
-                        transfer_project_id=transfer_object.id,
-                        created=datetime.now()
-                    )
-                    transfer_error.save()
+                    while True:
+                        try:
+                            transfer_error = TransferProjectError(
+                                object_error="{}/{}".format(container, prefix),
+                                transfer_project_id=transfer_object.id,
+                                created=datetime.now()
+                            )
+                            transfer_error.save()
+                            break
+                        except Exception as err:
+                            self.app.logger.error("[synchronize] 500 Save 'mysql': {}".format(
+                                err
+                            ))
+                            time.sleep(5)
                     continue
                 except requests.exceptions.ReadTimeout:
                     transfer.count_error += 1
@@ -644,12 +732,20 @@ class SynchronizeProjects():
                         container,
                         prefix
                     ))
-                    transfer_error = TransferProjectError(
-                        object_error="{}/{}".format(container, prefix),
-                        transfer_project_id=transfer_object.id,
-                        created=datetime.now()
-                    )
-                    transfer_error.save()
+                    while True:
+                        try:
+                            transfer_error = TransferProjectError(
+                                object_error="{}/{}".format(container, prefix),
+                                transfer_project_id=transfer_object.id,
+                                created=datetime.now()
+                            )
+                            transfer_error.save()
+                            break
+                        except Exception as err:
+                            self.app.logger.error("[synchronize] 500 Save 'mysql': {}".format(
+                                err
+                            ))
+                            time.sleep(5)
                     continue
                 except Exception as err:
                     transfer.count_error += 1
@@ -659,38 +755,67 @@ class SynchronizeProjects():
                         prefix,
                         err
                     ))
-                    transfer_error = TransferProjectError(
-                        object_error="{}/{}".format(container, prefix),
-                        transfer_project_id=transfer_object.id,
-                        created=datetime.now()
-                    )
-                    transfer_error.save()
+                    while True:
+                        try:
+                            transfer_error = TransferProjectError(
+                                object_error="{}/{}".format(container, prefix),
+                                transfer_project_id=transfer_object.id,
+                                created=datetime.now()
+                            )
+                            transfer_error.save()
+                            break
+                        except Exception as err:
+                            self.app.logger.error("[synchronize] 500 Save 'mysql': {}".format(
+                                err
+                            ))
+                            time.sleep(5)
                     continue
 
                 transfer.last_object = '{}/{}'.format(container, prefix)
                 self.flush_object -= 1
                 del blob
-                gc.collect()
 
                 if self.flush_object <= 0:
                     self.app.logger.info('flush_object.......')
-                    db.session.begin()
-                    transfer_project = db.session.query(TransferProject).filter_by(project_id=transfer_object.project_id).first()
-                    transfer_project.last_object = transfer.last_object
-                    transfer_project.count_error = transfer.count_error
-                    transfer_project.object_count_gcp = transfer.object_count_gcp
-                    transfer_project.bytes_used_gcp = transfer.bytes_used_gcp
-                    time.sleep(0.1)
-                    db.session.commit()
 
-                    labels = bucket.labels
-                    labels['object-count'] = transfer.object_count_gcp
-                    labels['bytes-used'] = transfer.bytes_used_gcp
-                    bucket.labels = labels
-                    bucket.patch()
+                    count = 0
+                    while True:
+                        try:
+                            if count == 0:
+                                db.session.begin()
+                            transfer_project = db.session.query(TransferProject).filter_by(project_id=transfer_object.project_id).first()
+                            transfer_project.last_object = transfer.last_object
+                            transfer_project.count_error = transfer.count_error
+                            transfer_project.object_count_gcp = transfer.object_count_gcp
+                            transfer_project.bytes_used_gcp = transfer.bytes_used_gcp
+                            time.sleep(0.1)
+                            db.session.commit()
+                            break
+                        except Exception as err:
+                            self.app.logger.error("[synchronize] 500 Flush object 'mysql': {}".format(
+                                err
+                            ))
+                            time.sleep(5)
+                            count += 1
+                    self.app.logger.info('commit.......')
 
-                    del transfer_project
-                    gc.collect()
+                    while True:
+                        try:
+                            labels = bucket.labels
+                            labels['object-count'] = transfer.object_count_gcp
+                            labels['bytes-used'] = transfer.bytes_used_gcp
+                            bucket.labels = labels
+                            time.sleep(2)
+                            deadline = Retry(deadline=60)
+                            bucket.patch(timeout=60, retry=deadline)
+                            break
+                        except Exception as err:
+                            self.app.logger.error("[synchronize] 500 Flush object 'bucket': {}".format(
+                                err
+                            ))
+                            time.sleep(5)
+                    self.app.logger.info('patch.......')
+
                     self.flush_object = self.FLUSH_OBJECT
 
                 try:
@@ -746,12 +871,20 @@ class SynchronizeProjects():
                                 container,
                                 obj.get('name')
                             ))
-                            transfer_error = TransferProjectError(
-                                object_error="{}/{}".format(container, obj.get('name')),
-                                transfer_project_id=transfer_object.id,
-                                created=datetime.now()
-                            )
-                            transfer_error.save()
+                            while True:
+                                try:
+                                    transfer_error = TransferProjectError(
+                                        object_error="{}/{}".format(container, obj.get('name')),
+                                        transfer_project_id=transfer_object.id,
+                                        created=datetime.now()
+                                    )
+                                    transfer_error.save()
+                                    break
+                                except Exception as err:
+                                    self.app.logger.error("[synchronize] 500 Save 'mysql': {}".format(
+                                        err
+                                    ))
+                                    time.sleep(5)
                             continue
                         except AuthorizationFailure:
                             transfer.count_error += 1
@@ -760,12 +893,20 @@ class SynchronizeProjects():
                                 container,
                                 obj.get('name')
                             ))
-                            transfer_error = TransferProjectError(
-                                object_error="{}/{}".format(container, obj.get('name')),
-                                transfer_project_id=transfer_object.id,
-                                created=datetime.now()
-                            )
-                            transfer_error.save()
+                            while True:
+                                try:
+                                    transfer_error = TransferProjectError(
+                                        object_error="{}/{}".format(container, obj.get('name')),
+                                        transfer_project_id=transfer_object.id,
+                                        created=datetime.now()
+                                    )
+                                    transfer_error.save()
+                                    break
+                                except Exception as err:
+                                    self.app.logger.error("[synchronize] 500 Save 'mysql': {}".format(
+                                        err
+                                    ))
+                                    time.sleep(5)
                             continue
                         except Exception as err:
                             transfer.count_error += 1
@@ -775,12 +916,20 @@ class SynchronizeProjects():
                                 obj.get('name'),
                                 err
                             ))
-                            transfer_error = TransferProjectError(
-                                object_error="{}/{}".format(container, obj.get('name')),
-                                transfer_project_id=transfer_object.id,
-                                created=datetime.now()
-                            )
-                            transfer_error.save()
+                            while True:
+                                try:
+                                    transfer_error = TransferProjectError(
+                                        object_error="{}/{}".format(container, obj.get('name')),
+                                        transfer_project_id=transfer_object.id,
+                                        created=datetime.now()
+                                    )
+                                    transfer_error.save()
+                                    break
+                                except Exception as err:
+                                    self.app.logger.error("[synchronize] 500 Save 'mysql': {}".format(
+                                        err
+                                    ))
+                                    time.sleep(5)
                             continue
                     except IncompleteRead:
                         transfer.count_error += 1
@@ -790,12 +939,20 @@ class SynchronizeProjects():
                             obj.get('name'),
                             err
                         ))
-                        transfer_error = TransferProjectError(
-                            object_error="{}/{}".format(container, obj.get('name')),
-                            transfer_project_id=transfer_object.id,
-                            created=datetime.now()
-                        )
-                        transfer_error.save()
+                        while True:
+                            try:
+                                transfer_error = TransferProjectError(
+                                    object_error="{}/{}".format(container, obj.get('name')),
+                                    transfer_project_id=transfer_object.id,
+                                    created=datetime.now()
+                                )
+                                transfer_error.save()
+                                break
+                            except Exception as err:
+                                self.app.logger.error("[synchronize] 500 Save 'mysql': {}".format(
+                                    err
+                                ))
+                                time.sleep(5)
                         continue
                     except Exception as err:
                         transfer.count_error += 1
@@ -805,12 +962,20 @@ class SynchronizeProjects():
                             obj.get('name'),
                             err
                         ))
-                        transfer_error = TransferProjectError(
-                            object_error="{}/{}".format(container, obj.get('name')),
-                            transfer_project_id=transfer_object.id,
-                            created=datetime.now()
-                        )
-                        transfer_error.save()
+                        while True:
+                            try:
+                                transfer_error = TransferProjectError(
+                                    object_error="{}/{}".format(container, obj.get('name')),
+                                    transfer_project_id=transfer_object.id,
+                                    created=datetime.now()
+                                )
+                                transfer_error.save()
+                                break
+                            except Exception as err:
+                                self.app.logger.error("[synchronize] 500 Save 'mysql': {}".format(
+                                    err
+                                ))
+                                time.sleep(5)
                         continue
 
                     try:
@@ -866,12 +1031,20 @@ class SynchronizeProjects():
                             transfer_object.project_name,
                             obj_path
                         ))
-                        transfer_error = TransferProjectError(
-                            object_error=obj_path,
-                            transfer_project_id=transfer_object.id,
-                            created=datetime.now()
-                        )
-                        transfer_error.save()
+                        while True:
+                            try:
+                                transfer_error = TransferProjectError(
+                                    object_error=obj_path,
+                                    transfer_project_id=transfer_object.id,
+                                    created=datetime.now()
+                                )
+                                transfer_error.save()
+                                break
+                            except Exception as err:
+                                self.app.logger.error("[synchronize] 500 Save 'mysql': {}".format(
+                                    err
+                                ))
+                                time.sleep(5)
                         continue
                     except requests.exceptions.ReadTimeout:
                         transfer.count_error += 1
@@ -879,12 +1052,20 @@ class SynchronizeProjects():
                             transfer_object.project_name,
                             obj_path
                         ))
-                        transfer_error = TransferProjectError(
-                            object_error=obj_path,
-                            transfer_project_id=transfer_object.id,
-                            created=datetime.now()
-                        )
-                        transfer_error.save()
+                        while True:
+                            try:
+                                transfer_error = TransferProjectError(
+                                    object_error=obj_path,
+                                    transfer_project_id=transfer_object.id,
+                                    created=datetime.now()
+                                )
+                                transfer_error.save()
+                                break
+                            except Exception as err:
+                                self.app.logger.error("[synchronize] 500 Save 'mysql': {}".format(
+                                    err
+                                ))
+                                time.sleep(5)
                         continue
                     except Exception as err:
                         transfer.count_error += 1
@@ -893,17 +1074,24 @@ class SynchronizeProjects():
                             obj_path,
                             err
                         ))
-                        transfer_error = TransferProjectError(
-                            object_error=obj_path,
-                            transfer_project_id=transfer_object.id,
-                            created=datetime.now()
-                        )
-                        transfer_error.save()
+                        while True:
+                            try:
+                                transfer_error = TransferProjectError(
+                                    object_error=obj_path,
+                                    transfer_project_id=transfer_object.id,
+                                    created=datetime.now()
+                                )
+                                transfer_error.save()
+                                break
+                            except Exception as err:
+                                self.app.logger.error("[synchronize] 500 Save 'mysql': {}".format(
+                                    err
+                                ))
+                                time.sleep(5)
                         continue
 
                     del content
                     del blob
-                    gc.collect()
 
                     transfer.object_count_gcp += 1
                     transfer.bytes_used_gcp += obj.get('bytes')
@@ -912,22 +1100,43 @@ class SynchronizeProjects():
 
                     if self.flush_object <= 0:
                         self.app.logger.info('flush_object.......')
-                        db.session.begin()
-                        transfer_project = db.session.query(TransferProject).filter_by(project_id=transfer_object.project_id).first()
-                        transfer_project.last_object = transfer.last_object
-                        transfer_project.count_error = transfer.count_error
-                        transfer_project.object_count_gcp = transfer.object_count_gcp
-                        transfer_project.bytes_used_gcp = transfer.bytes_used_gcp
-                        time.sleep(0.1)
-                        db.session.commit()
 
-                        labels = bucket.labels
-                        labels['object-count'] = transfer.object_count_gcp
-                        labels['bytes-used'] = transfer.bytes_used_gcp
-                        bucket.labels = labels
-                        time.sleep(2)
-                        bucket.patch()
+                        count = 0
+                        while True:
+                            try:
+                                if count == 0:
+                                    db.session.begin()
+                                transfer_project = db.session.query(TransferProject).filter_by(project_id=transfer_object.project_id).first()
+                                transfer_project.last_object = transfer.last_object
+                                transfer_project.count_error = transfer.count_error
+                                transfer_project.object_count_gcp = transfer.object_count_gcp
+                                transfer_project.bytes_used_gcp = transfer.bytes_used_gcp
+                                time.sleep(0.3)
+                                db.session.commit()
+                                break
+                            except Exception as err:
+                                self.app.logger.error("[synchronize] 500 Flush object 'mysql': {}".format(
+                                    err
+                                ))
+                                time.sleep(5)
+                                count += 1
+                        self.app.logger.info('commit.......')
 
-                        del transfer_project
-                        gc.collect()
+                        while True:
+                            try:
+                                labels = bucket.labels
+                                labels['object-count'] = transfer.object_count_gcp
+                                labels['bytes-used'] = transfer.bytes_used_gcp
+                                bucket.labels = labels
+                                time.sleep(2)
+                                deadline = Retry(deadline=60)
+                                bucket.patch(timeout=60, retry=deadline)
+                                break
+                            except Exception as err:
+                                self.app.logger.error("[synchronize] 500 Flush object 'bucket': {}".format(
+                                    err
+                                ))
+                                time.sleep(5)
+                        self.app.logger.info('patch.......')
+
                         self.flush_object = self.FLUSH_OBJECT

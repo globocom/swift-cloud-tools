@@ -10,8 +10,8 @@ db = SQLAlchemy(session_options={'autocommit': True})
 class SaveDeleteModel():
 
     def save(self):
-        db.session.begin()
         try:
+            db.session.begin()
             status = 200
             if self.id == None:
                 db.session.add(self)
@@ -25,8 +25,8 @@ class SaveDeleteModel():
                 return str(e.args), 500
 
     def delete(self):
-        db.session.begin()
         try:
+            db.session.begin()
             db.session.delete(self)
             db.session.commit()
             return 'ok', 200
@@ -314,5 +314,176 @@ class ProjectHostname(db.Model, SaveDeleteModel):
         if status == 200:
             return "Project '{}' Hostname '{}' deleted".format(
                 self.project_id, self.hostname), status
+
+        return msg, status
+
+
+class TransferContainer(db.Model, SaveDeleteModel):
+    id = db.Column(db.Integer, primary_key=True)
+    project_id = db.Column(db.String(64), nullable=False, unique=True)
+    project_name = db.Column(db.String(64), nullable=False)
+    container_name = db.Column(db.String(255), nullable=False)
+    environment = db.Column(db.String(10), nullable=False)
+    container_count_swift = db.Column(db.Integer, default=0, nullable=True)
+    object_count_swift = db.Column(db.Integer, default=0, nullable=True)
+    bytes_used_swift = db.Column(BIGINT(unsigned=False), default=0, nullable=True)
+    last_object = db.Column(db.String(255), nullable=True)
+    count_error = db.Column(db.Integer, default=0, nullable=True)
+    container_count_gcp = db.Column(db.Integer, default=0, nullable=True)
+    object_count_gcp = db.Column(db.Integer, default=0, nullable=True)
+    bytes_used_gcp = db.Column(BIGINT(unsigned=False), default=0, nullable=True)
+    initial_date = db.Column(db.DateTime, nullable=True)
+    final_date = db.Column(db.DateTime, nullable=True)
+
+    def __init__(self, project_id, project_name, container_name, environment, container_count_swift=None,
+                 object_count_swift=None, bytes_used_swift=None, last_object=None, count_error=None,
+                 container_count_gcp=None, object_count_gcp=None, bytes_used_gcp=None,
+                 initial_date=None, final_date=None):
+        self.project_id = project_id
+        self.project_name = project_name
+        self.container_name = container_name
+        self.environment = environment
+        self.container_count_swift = container_count_swift
+        self.object_count_swift = object_count_swift
+        self.bytes_used_swift = bytes_used_swift
+        self.last_object = last_object
+        self.count_error = count_error
+        self.container_count_gcp = container_count_gcp
+        self.object_count_gcp = object_count_gcp
+        self.bytes_used_gcp = bytes_used_gcp
+        self.initial_date = initial_date
+        self.final_date = final_date
+
+    def to_dict(self):
+        tp = {
+            "project_id": self.project_id,
+            "project_name": self.project_name,
+            "container_name": self.container_name,
+            "environment": self.environment,
+            "container_count_swift": self.container_count_swift,
+            "object_count_swift": self.object_count_swift,
+            "bytes_used_swift": self.bytes_used_swift,
+            "last_object": self.last_object,
+            "count_error": self.count_error,
+            "container_count_gcp": self.container_count_gcp,
+            "object_count_gcp": self.object_count_gcp,
+            "bytes_used_gcp": self.bytes_used_gcp,
+            "initial_date": "",
+            "final_date": ""
+        }
+
+        if self.initial_date:
+            tp["initial_date"] = datetime.strftime(
+                self.initial_date, "%Y-%m-%d %H:%M:%S")
+
+        if self.final_date:
+            tp["final_date"] = datetime.strftime(
+                self.final_date, "%Y-%m-%d %H:%M:%S")
+
+        return tp
+
+    def find_transfer_container(project_id, container_name):
+        transfer_container = (TransferContainer.query
+            .filter(func.lower(TransferContainer.project_id) == project_id)
+            .filter(func.lower(TransferContainer.container_name) == container_name)
+        ).all()
+
+        if transfer_container.count() > 0:
+            return transfer_container
+        else:
+            return None
+
+    def save(self):
+        msg, status = SaveDeleteModel.save(self)
+
+        if status == 201:
+            return "Transfer project '{}' container '{}' environment '{}' created".format(
+                self.project_name, self.container_name, self.environment), status
+
+        return msg, status
+
+    def delete(self):
+        msg, status = SaveDeleteModel.delete(self)
+
+        if status == 200:
+            return "Transfer project '{}' container '{}' environment '{}' deleted".format(
+                self.project_name, self.container_name, self.environment), status
+
+        return msg, status
+
+
+class TransferContainerError(db.Model, SaveDeleteModel):
+    id = db.Column(db.Integer, primary_key=True)
+    object_error = db.Column(db.String(255), nullable=False)
+    transfer_container_id = db.Column(db.Integer, db.ForeignKey('transfer_container.id'))
+    created = db.Column(db.DateTime, default=datetime.utcnow)
+
+    def __init__(self, object_error=None, transfer_container_id=None, created=None):
+        self.object_error = object_error
+        self.transfer_container_id = transfer_container_id
+        self.created = created
+
+    def save(self):
+        msg, status = SaveDeleteModel.save(self)
+
+        if status == 201:
+            return "Transfer container error '{}' - {} created".format(
+                self.object_error, self.transfer_container_id), status
+
+        return msg, status
+
+    def delete(self):
+        msg, status = SaveDeleteModel.delete(self)
+
+        if status == 200:
+            return "Transfer container error '{}' - {} deleted".format(
+                self.object_error, self.transfer_container_id), status
+
+        return msg, status
+
+
+class ProjectContainerHostname(db.Model, SaveDeleteModel):
+    id = db.Column(db.Integer, primary_key=True)
+    project_id = db.Column(db.String(64), nullable=False)
+    container_name = db.Column(db.String(255), nullable=False)
+    hostname = db.Column(db.String(100), nullable=False)
+    updated = db.Column(db.DateTime, default=datetime.utcnow)
+
+    def __init__(self, project_id=None, hostname=None, updated=None):
+        self.project_id = project_id
+        self.container_name = container_name
+        self.hostname = hostname
+        self.updated = updated
+
+    __table_args__ = (
+        db.UniqueConstraint(project_id, container_name, hostname),
+    )
+
+    def find_project_container_hostname(project_id, container_name, hostname):
+        project_container_hostname = (ProjectContainerHostname.query
+            .filter(func.lower(ProjectContainerHostname.project_id) == project_id)
+            .filter(func.lower(ProjectContainerHostname.container_name) == container_name)
+            .filter(func.lower(ProjectContainerHostname.hostname) == hostname))
+
+        if project_container_hostname.count() > 0:
+            return project_container_hostname.first()
+        else:
+            return None
+
+    def save(self):
+        msg, status = SaveDeleteModel.save(self)
+
+        if status == 201:
+            return "Project '{}' container '{}' Hostname '{}' created".format(
+                self.project_id, self.container_name, self.hostname), status
+
+        return msg, status
+
+    def delete(self):
+        msg, status = SaveDeleteModel.delete(self)
+
+        if status == 200:
+            return "Project '{}' container '{}' Hostname '{}' deleted".format(
+                self.project_id, self.container_name, self.hostname), status
 
         return msg, status

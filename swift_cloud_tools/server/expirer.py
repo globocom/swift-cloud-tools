@@ -24,8 +24,12 @@ async def work():
         if not storage_client:
             storage_client = google.get_storage_client()
 
-        current_time = datetime.now()
-        raws = ExpiredObject.query.filter(ExpiredObject.date <= current_time).all()
+        try:
+            current_time = datetime.now()
+            raws = ExpiredObject.query.filter(ExpiredObject.date <= current_time).all()
+        except Exception as err:
+            app.logger.info("[SERVICE][EXPIRER] 500 Query 'mysql': {}".format(err))
+            raws = []
 
         for raw in raws:
             bucket = storage_client.get_bucket(raw.account)
