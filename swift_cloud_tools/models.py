@@ -214,18 +214,13 @@ class TransferProjectError(db.Model, SaveDeleteModel):
 
 class ContainerInfo(db.Model, SaveDeleteModel):
     id = db.Column(db.Integer, primary_key=True)
-    project_id = db.Column(db.String(64), nullable=False)
+    project_id = db.Column(db.String(64), nullable=False, index=True)
     container_name = db.Column(db.String(255), nullable=False)
-    object_count = db.Column(db.Integer, default=0, nullable=True)
-    bytes_used = db.Column(BIGINT(unsigned=False), default=0, nullable=True)
     updated = db.Column(db.DateTime, default=datetime.utcnow)
 
-    def __init__(self, project_id=None, container_name=None,
-                 object_count=None, bytes_used=None, updated=None):
+    def __init__(self, project_id=None, container_name=None, updated=None):
         self.project_id = project_id
         self.container_name = container_name
-        self.object_count = object_count
-        self.bytes_used = bytes_used
         self.updated = updated
 
     __table_args__ = (
@@ -320,7 +315,7 @@ class ProjectHostname(db.Model, SaveDeleteModel):
 
 class TransferContainer(db.Model, SaveDeleteModel):
     id = db.Column(db.Integer, primary_key=True)
-    project_id = db.Column(db.String(64), nullable=False, unique=True)
+    project_id = db.Column(db.String(64), nullable=False, index=True)
     project_name = db.Column(db.String(64), nullable=False)
     container_name = db.Column(db.String(255), nullable=False)
     environment = db.Column(db.String(10), nullable=False)
@@ -353,6 +348,10 @@ class TransferContainer(db.Model, SaveDeleteModel):
         self.bytes_used_gcp = bytes_used_gcp
         self.initial_date = initial_date
         self.final_date = final_date
+
+    __table_args__ = (
+        db.UniqueConstraint(project_id, container_name),
+    )
 
     def to_dict(self):
         tp = {

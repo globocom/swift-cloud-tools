@@ -42,7 +42,7 @@ async def work():
                 TransferProject.final_date == None
             ).all()
         except Exception as err:
-            app.logger.info("[SERVICE][EXPIRER] 500 Query 'mysql': {}".format(err))
+            app.logger.info("[SERVICE][TRANSFER] 500 Query 'mysql': {}".format(err))
             continue
 
         running = len(raws)
@@ -57,7 +57,7 @@ async def work():
                 TransferProject.final_date == None
             ).all()
         except Exception as err:
-            app.logger.info("[SERVICE][EXPIRER] 500 Query 'mysql': {}".format(err))
+            app.logger.info("[SERVICE][TRANSFER] 500 Query 'mysql': {}".format(err))
             continue
 
         try:
@@ -66,7 +66,7 @@ async def work():
                 func.count(ProjectHostname.hostname)
             ).group_by(ProjectHostname.hostname).all()
         except Exception as err:
-            app.logger.info("[SERVICE][EXPIRER] 500 Query 'mysql': {}".format(err))
+            app.logger.info("[SERVICE][TRANSFER] 500 Query 'mysql': {}".format(err))
             continue
 
         for project_hostname in projects_hostnames:
@@ -108,7 +108,7 @@ async def work():
                         transfer_object.final_date = datetime.now()
                         transfer_object.save()
                 except Exception as err:
-                    app.logger.info("[SERVICE][EXPIRER] 500 Save 'mysql': {}".format(err))
+                    app.logger.info("[SERVICE][TRANSFER] 500 Save 'mysql': {}".format(err))
                     continue
 
                 try:
@@ -117,7 +117,7 @@ async def work():
                     if project_hostname:
                         msg, status = project_hostname.delete()
                 except Exception as err:
-                    app.logger.info("[SERVICE][EXPIRER] 500 Delete 'mysql': {}".format(err))
+                    app.logger.info("[SERVICE][TRANSFER] 500 Delete 'mysql': {}".format(err))
                     continue
 
         for raw in raws[:1]:
@@ -130,7 +130,7 @@ async def work():
                 raw.initial_date = datetime.now()
                 msg, status = raw.save()
             except Exception as err:
-                app.logger.info("[SERVICE][EXPIRER] 500 Save 'mysql': {}".format(err))
+                app.logger.info("[SERVICE][TRANSFER] 500 Save 'mysql': {}".format(err))
                 continue
 
             try:
@@ -141,7 +141,7 @@ async def work():
                 )
                 msg, status = project_hostname.save()
             except Exception as err:
-                app.logger.info("[SERVICE][EXPIRER] 500 Save 'mysql': {}".format(err))
+                app.logger.info("[SERVICE][TRANSFER] 500 Save 'mysql': {}".format(err))
                 continue
 
         app.logger.info('[SERVICE][TRANSFER] Transfer task completed')
