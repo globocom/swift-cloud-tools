@@ -74,7 +74,7 @@ async def work():
 
         diff = number_of_units - len(hostnames)
 
-        if hostname in hostnames:
+        if (diff == 0) or (hostname in hostnames):
             raws = []
 
         app.logger.info('[SERVICE][TRANSFER_CONTAINER] running: {}'.format(running))

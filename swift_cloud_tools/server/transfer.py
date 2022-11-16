@@ -85,7 +85,7 @@ async def work():
                         break
                 if has_small:
                     raws = []
-            elif hostname in hostnames:
+            else:
                 raws = []
 
         app.logger.info('[SERVICE][TRANSFER] running: {}'.format(running))
