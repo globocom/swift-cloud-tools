@@ -3,6 +3,7 @@ import asyncio
 import os
 
 from datetime import datetime
+from google.api_core.exceptions import NotFound
 
 from swift_cloud_tools.server.utils import Google
 from swift_cloud_tools.models import ExpiredObject
@@ -32,7 +33,15 @@ async def work():
             raws = []
 
         for raw in raws:
-            bucket = storage_client.get_bucket(raw.account)
+            try:
+                bucket = storage_client.get_bucket(
+                    raw.account,
+                    timeout=30
+                )
+            except NotFound:
+                app.logger.info('[SERVICE][EXPIRER] Bucket not exists: {}'.format(raw.account))
+                break
+
             obj_path = "{}/{}".format(raw.container, raw.obj)
 
             if not bucket or not bucket.exists():

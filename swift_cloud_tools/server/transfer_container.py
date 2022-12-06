@@ -90,9 +90,10 @@ async def work():
             app.logger.info('[SERVICE][TRANSFER_CONTAINER] name: {}, isAlive: {}'.format(thread.name, thread.isAlive()))
             if not thread.isAlive():
                 del threads[key]
-                key = key.split('_')
+                key = key.split('_', 1)
                 project_id = key[0]
                 container_name = key[1]
+                del hostnames[hostname]
                 try:
                     transfer_container = TransferContainer.find_transfer_container(project_id, container_name)
 
@@ -113,19 +114,6 @@ async def work():
                     continue
 
         for raw in raws[:1]:
-            sync = SynchronizeContainers(raw.project_id, raw.container_name, hostname)
-            thread_name = '{}_{}'.format(raw.project_id, raw.container_name)
-            x = threading.Thread(target=sync.synchronize, args=(raw.project_id, raw.container_name, hostname,), name=thread_name)
-            x.start()
-            threads[thread_name] = x
-
-            try:
-                raw.initial_date = datetime.now()
-                msg, status = raw.save()
-            except Exception as err:
-                app.logger.info("[SERVICE][TRANSFER_CONTAINER] 500 Save 'mysql': {}".format(err))
-                continue
-
             try:
                 project_container_hostname = ProjectContainerHostname(
                     project_id=raw.project_id,
@@ -134,6 +122,19 @@ async def work():
                     updated=datetime.now()
                 )
                 msg, status = project_container_hostname.save()
+
+                try:
+                    raw.initial_date = datetime.now()
+                    msg, status = raw.save()
+                except Exception as err:
+                    app.logger.info("[SERVICE][TRANSFER_CONTAINER] 500 Save 'mysql': {}".format(err))
+                    continue
+
+                sync = SynchronizeContainers(raw.project_id, raw.container_name, hostname)
+                thread_name = '{}_{}'.format(raw.project_id, raw.container_name)
+                x = threading.Thread(target=sync.synchronize, args=(raw.project_id, raw.container_name, hostname,), name=thread_name)
+                x.start()
+                threads[thread_name] = x
             except Exception as err:
                 app.logger.info("[SERVICE][TRANSFER_CONTAINER] 500 Save 'mysql': {}".format(err))
                 continue

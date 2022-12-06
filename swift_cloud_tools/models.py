@@ -385,10 +385,10 @@ class TransferContainer(db.Model, SaveDeleteModel):
         transfer_container = (TransferContainer.query
             .filter(func.lower(TransferContainer.project_id) == project_id)
             .filter(func.lower(TransferContainer.container_name) == container_name)
-        ).all()
+        )
 
         if transfer_container.count() > 0:
-            return transfer_container
+            return transfer_container.first()
         else:
             return None
 
@@ -417,7 +417,7 @@ class TransferContainerError(db.Model, SaveDeleteModel):
     transfer_container_id = db.Column(db.Integer, db.ForeignKey('transfer_container.id'))
     created = db.Column(db.DateTime, default=datetime.utcnow)
 
-    def __init__(self, object_error=None, transfer_container_id=None, created=None):
+    def __init__(self, object_error, transfer_container_id, created):
         self.object_error = object_error
         self.transfer_container_id = transfer_container_id
         self.created = created
@@ -448,14 +448,14 @@ class ProjectContainerHostname(db.Model, SaveDeleteModel):
     hostname = db.Column(db.String(100), nullable=False)
     updated = db.Column(db.DateTime, default=datetime.utcnow)
 
-    def __init__(self, project_id=None, hostname=None, updated=None):
+    def __init__(self, project_id, container_name, hostname, updated):
         self.project_id = project_id
         self.container_name = container_name
         self.hostname = hostname
         self.updated = updated
 
     __table_args__ = (
-        db.UniqueConstraint(project_id, container_name, hostname),
+        db.UniqueConstraint(project_id, container_name),
     )
 
     def find_project_container_hostname(project_id, container_name, hostname):

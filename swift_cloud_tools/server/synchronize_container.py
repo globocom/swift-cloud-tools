@@ -6,11 +6,12 @@ import json
 import os
 
 from datetime import datetime
+from random import uniform
 from flask import Response
 from threading import Thread
 from swift_cloud_tools import create_app
 from google.auth.exceptions import TransportError
-from google.api_core.exceptions import BadRequest, NotFound
+from google.api_core.exceptions import BadRequest, NotFound, Conflict
 from google.api_core.retry import Retry
 from swiftclient import client as swift_client
 from keystoneauth1.exceptions.auth import AuthorizationFailure
@@ -39,10 +40,6 @@ class SynchronizeContainers():
         self.container_name = container_name
         self.hostname = hostname
 
-        self.app = create_app('config/{}_config.py'.format(os.environ.get("FLASK_CONFIG")))
-        ctx = self.app.app_context()
-        ctx.push()
-
         while True:
             try:
                 self.transfer_object = TransferProject.find_transfer_project(project_id)
@@ -56,13 +53,11 @@ class SynchronizeContainers():
         self.keystone = Keystone()
         self.conn = self.keystone.get_keystone_connection()
         self.swift = Swift(self.conn, project_id)
-        self.FLUSH_OBJECT = int(os.environ.get("FLUSH_OBJECT", "1000"))
 
     def synchronize(self, project_id, container_name, hostname):
         """Get project in swift."""
 
         self.project_id = project_id
-        self.flush_object = self.FLUSH_OBJECT
         self.container_name = container_name
         self.hostname = hostname
 
@@ -88,6 +83,7 @@ class SynchronizeContainers():
 
         storage_client = google.get_storage_client()
         account = 'auth_{}'.format(project_id)
+        time.sleep(int(uniform(5, 10)))
 
         try:
             bucket = storage_client.get_bucket(
@@ -95,21 +91,24 @@ class SynchronizeContainers():
                 timeout=30
             )
         except NotFound:
-            bucket = storage_client.create_bucket(
-                account,
-                location=BUCKET_LOCATION
-            )
+            try:
+                bucket = storage_client.create_bucket(
+                    account,
+                    location=BUCKET_LOCATION
+                )
 
-            labels = bucket.labels
-            labels['account-meta-cloud'] = 'gcp'
-            labels['container-count'] = 0
-            labels['object-count'] = 0
-            labels['bytes-used'] = 0
-            bucket.labels = labels
+                labels = bucket.labels
+                labels['account-meta-cloud'] = 'gcp'
+                labels['container-count'] = 0
+                labels['object-count'] = 0
+                labels['bytes-used'] = 0
+                bucket.labels = labels
 
-            # bucket.iam_configuration.uniform_bucket_level_access_enabled = False
-            deadline = Retry(deadline=60)
-            bucket.patch(timeout=60, retry=deadline)
+                # bucket.iam_configuration.uniform_bucket_level_access_enabled = False
+                deadline = Retry(deadline=60)
+                bucket.patch(timeout=10, retry=deadline)
+            except Conflict:
+                pass
         except Exception as err:
             self.app.logger.error('[{}] 500 GET Create bucket: {}'.format(
                 transfer_object.project_name,
@@ -118,9 +117,10 @@ class SynchronizeContainers():
             return Response(err, mimetype="text/plain", status=500)
 
         self.app.logger.info('========================================================')
-        self.app.logger.info("[{}] SET account_meta_cloud 'AUTH_{}'".format(
+        self.app.logger.info("[{}] SET account_meta_cloud 'AUTH_{}': {}".format(
             transfer_object.project_name,
-            project_id
+            project_id,
+            container_name
         ))
 
         ########################################
@@ -313,8 +313,9 @@ class SynchronizeContainers():
 
         if len(objects) > 0:
             self._get_container(
+                storage_client,
+                account,
                 container_name,
-                bucket,
                 transfer,
                 transfer_object,
                 objects
@@ -324,6 +325,35 @@ class SynchronizeContainers():
             transfer_object.project_name,
             container_name
         ))
+
+        time.sleep(int(uniform(1, 20)) + int(uniform(5, 20)) + int(uniform(10, 20)))
+        container_count_gcp = 0
+        object_count_gcp = 0
+        bytes_used_gcp = 0
+
+        count = 0
+        while True:
+            try:
+                if count == 0:
+                    db.session.begin()
+                transfer_project = db.session.query(TransferProject).filter_by(project_id=transfer_object.project_id).first()
+                transfer_project.last_object = transfer.last_object
+                transfer_project.count_error = TransferProject.count_error + transfer.count_error
+                transfer_project.container_count_gcp = TransferProject.container_count_gcp + 1
+                transfer_project.object_count_gcp = TransferProject.object_count_gcp + transfer.object_count_gcp
+                transfer_project.bytes_used_gcp = TransferProject.bytes_used_gcp + transfer.bytes_used_gcp
+                time.sleep(0.1)
+                db.session.commit()
+                container_count_gcp = transfer_project.container_count_gcp
+                object_count_gcp = transfer_project.object_count_gcp
+                bytes_used_gcp = transfer_project.bytes_used_gcp
+                break
+            except Exception as err:
+                self.app.logger.error("[synchronize] 500 Save 'mysql' transfer_project: {}".format(
+                    err
+                ))
+                time.sleep(5)
+                count += 1
 
         count = 0
         while True:
@@ -335,14 +365,15 @@ class SynchronizeContainers():
                     container_name=container_name
                 ).first()
                 transfer_container.last_object = transfer.last_object
-                transfer_container.count_error = transfer.count_error
-                transfer_container.object_count_gcp = transfer.object_count_gcp
-                transfer_container.bytes_used_gcp = transfer.bytes_used_gcp
+                transfer_container.count_error = TransferContainer.count_error + transfer.count_error
+                transfer_container.container_count_gcp = 1
+                transfer_container.object_count_gcp = TransferContainer.object_count_gcp + transfer.object_count_gcp
+                transfer_container.bytes_used_gcp = TransferContainer.bytes_used_gcp + transfer.bytes_used_gcp
                 time.sleep(0.1)
                 db.session.commit()
                 break
             except Exception as err:
-                self.app.logger.error("[synchronize] 500 Save 'mysql': {}".format(
+                self.app.logger.error("[synchronize] 500 Save 'mysql' transfer_container: {}".format(
                     err
                 ))
                 time.sleep(5)
@@ -350,13 +381,18 @@ class SynchronizeContainers():
 
         while True:
             try:
-                labels = bucket.labels
-                labels['object-count'] = transfer.object_count_gcp
-                labels['bytes-used'] = transfer.bytes_used_gcp
-                bucket.labels = labels
+                bucket_flush = storage_client.get_bucket(
+                    account,
+                    timeout=30
+                )
+                labels_flush = bucket_flush.labels
+                labels_flush['container-count'] = container_count_gcp
+                labels_flush['object-count'] = object_count_gcp
+                labels_flush['bytes-used'] = bytes_used_gcp
+                bucket_flush.labels = labels_flush
                 time.sleep(0.1)
                 deadline = Retry(deadline=60)
-                bucket.patch(timeout=60, retry=deadline)
+                bucket_flush.patch(timeout=10, retry=deadline)
                 break
             except Exception as err:
                 self.app.logger.error("[synchronize] 500 Save 'bucket': {}".format(
@@ -364,10 +400,28 @@ class SynchronizeContainers():
                 ))
                 time.sleep(5)
 
+        status, msg = self.swift.set_account_meta_cloud_migration()
 
-    def _get_container(self, container, bucket, transfer, transfer_object, objects):
+        self.app.logger.info('========================================================')
+        self.app.logger.info("[{}] {} SET account_meta_cloud_migration 'AUTH_{}': {}".format(
+            transfer_object.project_name,
+            status,
+            project_id,
+            msg
+        ))
+
+        if status != 204:
+            return Response(msg, mimetype="text/plain", status=status)
+
+
+    def _get_container(self, storage_client, account, container, transfer, transfer_object, objects):
         ctx = self.app.app_context()
         ctx.push()
+
+        bucket = storage_client.get_bucket(
+            account,
+            timeout=30
+        )
 
         for obj in objects:
             if obj.get('subdir'):
@@ -462,74 +516,7 @@ class SynchronizeContainers():
                     continue
 
                 transfer.last_object = '{}/{}'.format(container, prefix)
-                self.flush_object -= 1
                 del blob
-
-                if self.flush_object <= 0:
-                    self.app.logger.info('flush_object.......')
-
-                    count = 0
-                    while True:
-                        try:
-                            if count == 0:
-                                db.session.begin()
-                            transfer_project = db.session.query(TransferProject).filter_by(project_id=transfer_object.project_id).first()
-                            transfer_project.last_object = transfer.last_object
-                            transfer_project.count_error = transfer.count_error
-                            transfer_project.object_count_gcp = transfer.object_count_gcp
-                            transfer_project.bytes_used_gcp = transfer.bytes_used_gcp
-                            time.sleep(0.1)
-                            db.session.commit()
-                            break
-                        except Exception as err:
-                            self.app.logger.error("[synchronize] 500 Flush object 'mysql' transfer_project: {}".format(
-                                err
-                            ))
-                            time.sleep(5)
-                            count += 1
-                    self.app.logger.info('commit.......')
-
-                    count = 0
-                    while True:
-                        try:
-                            if count == 0:
-                                db.session.begin()
-                            transfer_container = db.session.query(TransferContainer).filter_by(
-                                project_id=transfer_object.project_id,
-                                container_name=container).first()
-                            transfer_container.last_object = transfer.last_object
-                            transfer_container.count_error = transfer.count_error
-                            transfer_container.object_count_gcp = transfer.object_count_gcp
-                            transfer_container.bytes_used_gcp = transfer.bytes_used_gcp
-                            time.sleep(0.1)
-                            db.session.commit()
-                            break
-                        except Exception as err:
-                            self.app.logger.error("[synchronize] 500 Flush object 'mysql' transfer_container: {}".format(
-                                err
-                            ))
-                            time.sleep(5)
-                            count += 1
-                    self.app.logger.info('commit.......')
-
-                    while True:
-                        try:
-                            labels = bucket.labels
-                            labels['object-count'] = transfer.object_count_gcp
-                            labels['bytes-used'] = transfer.bytes_used_gcp
-                            bucket.labels = labels
-                            time.sleep(2)
-                            deadline = Retry(deadline=60)
-                            bucket.patch(timeout=60, retry=deadline)
-                            break
-                        except Exception as err:
-                            self.app.logger.error("[synchronize] 500 Flush object 'bucket': {}".format(
-                                err
-                            ))
-                            time.sleep(5)
-                    self.app.logger.info('patch.......')
-
-                    self.flush_object = self.FLUSH_OBJECT
 
                 try:
                     meta, objects = self.swift.get_container(container, prefix=prefix)
@@ -562,8 +549,9 @@ class SynchronizeContainers():
 
                 if len(objects) > 0:
                     self._get_container(
+                        storage_client,
+                        account,
                         container,
-                        bucket,
                         transfer,
                         transfer_object,
                         objects
@@ -809,70 +797,3 @@ class SynchronizeContainers():
                     transfer.object_count_gcp += 1
                     transfer.bytes_used_gcp += obj.get('bytes')
                     transfer.last_object = '{}/{}'.format(container, obj.get('name'))
-                    self.flush_object -= 1
-
-                    if self.flush_object <= 0:
-                        self.app.logger.info('flush_object.......')
-
-                        count = 0
-                        while True:
-                            try:
-                                if count == 0:
-                                    db.session.begin()
-                                transfer_project = db.session.query(TransferProject).filter_by(project_id=transfer_object.project_id).first()
-                                transfer_project.last_object = transfer.last_object
-                                transfer_project.count_error = transfer.count_error
-                                transfer_project.object_count_gcp = transfer.object_count_gcp
-                                transfer_project.bytes_used_gcp = transfer.bytes_used_gcp
-                                time.sleep(0.3)
-                                db.session.commit()
-                                break
-                            except Exception as err:
-                                self.app.logger.error("[synchronize] 500 Flush object 'mysql' transfer_project: {}".format(
-                                    err
-                                ))
-                                time.sleep(5)
-                                count += 1
-                        self.app.logger.info('commit.......')
-
-                        count = 0
-                        while True:
-                            try:
-                                if count == 0:
-                                    db.session.begin()
-                                transfer_container = db.session.query(TransferContainer).filter_by(
-                                    project_id=transfer_object.project_id,
-                                    container_name=container).first()
-                                transfer_container.last_object = transfer.last_object
-                                transfer_container.count_error = transfer.count_error
-                                transfer_container.object_count_gcp = transfer.object_count_gcp
-                                transfer_container.bytes_used_gcp = transfer.bytes_used_gcp
-                                time.sleep(0.3)
-                                db.session.commit()
-                                break
-                            except Exception as err:
-                                self.app.logger.error("[synchronize] 500 Flush object 'mysql' transfer_container: {}".format(
-                                    err
-                                ))
-                                time.sleep(5)
-                                count += 1
-                        self.app.logger.info('commit.......')
-
-                        while True:
-                            try:
-                                labels = bucket.labels
-                                labels['object-count'] = transfer.object_count_gcp
-                                labels['bytes-used'] = transfer.bytes_used_gcp
-                                bucket.labels = labels
-                                time.sleep(2)
-                                deadline = Retry(deadline=60)
-                                bucket.patch(timeout=60, retry=deadline)
-                                break
-                            except Exception as err:
-                                self.app.logger.error("[synchronize] 500 Flush object 'bucket': {}".format(
-                                    err
-                                ))
-                                time.sleep(5)
-                        self.app.logger.info('patch.......')
-
-                        self.flush_object = self.FLUSH_OBJECT
