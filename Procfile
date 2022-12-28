@@ -3,3 +3,4 @@ expirer: ./run_service expirer
 transfer: ./run_service transfer
 # transfer_container: ./run_service transfer_container
 health: ./run_service health
+counter: ./run_service counter
