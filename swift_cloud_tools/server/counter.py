@@ -22,19 +22,54 @@ async def work():
 
     def callback(message: pubsub_v1.subscriber.message.Message) -> None:
         sync = SynchronizeCounters()
-        sync.synchronize(message)
+        synchronize = sync.synchronize(message)
+        synchronize = None
 
     while True:
         app.logger.info('[SERVICE][COUNTER] Counter task started')
 
-        future = subscriber.subscribe(subscription_path, callback)
+        response = subscriber.pull(
+            request={
+                "subscription": subscription_path,
+                "max_messages": 100,
+            }
+        )
 
-        try:
-            future.result()
-        except Exception as err:
-            app.logger.info("[SERVICE][COUNTER] future.result(): {}".format(err))
-            # Close the subscriber if not using a context manager.
-            # subscriber.close()
+        # Pulling a Subscription Synchronously
+        for msg in response.received_messages:
+            sync = SynchronizeCounters()
+            synchronize = sync.synchronize(msg.message)
+
+            if synchronize:
+                subscriber.acknowledge(
+                    request={
+                        "subscription": subscription_path,
+                        "ack_ids": [msg.ack_id],
+                    }
+                )
+                # print('======> ack')
+            else:
+                ack_deadline_seconds = 0
+                subscriber.modify_ack_deadline(
+                    request={
+                        "subscription": subscription_path,
+                        "ack_ids": [msg.ack_id],
+                        "ack_deadline_seconds": ack_deadline_seconds,
+                    }
+                )
+                # print('======> nack')
+
+            synchronize = None
+
+        # Pulling a Subscription Asynchronously
+        # future = subscriber.subscribe(subscription_path, callback)
+
+        # try:
+        #     future.result()
+        # except Exception as err:
+        #     app.logger.info("[SERVICE][COUNTER] future.result(): {}".format(err))
+        #     # Close the subscriber if not using a context manager.
+        #     # subscriber.close()
 
         app.logger.info('[SERVICE][COUNTER] Counter task completed')
         # app.logger.info('[SERVICE][COUNTER] Sending passive monitoring to zabbix')

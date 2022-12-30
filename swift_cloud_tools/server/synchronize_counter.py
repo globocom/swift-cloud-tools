@@ -2,7 +2,7 @@
 import os
 import json
 
-from google.api_core.exceptions import NotFound
+from google.api_core.exceptions import NotFound, RetryError
 from google.api_core.retry import Retry
 
 from swift_cloud_tools.server.utils import Google
@@ -58,6 +58,7 @@ class SynchronizeCounters():
                 metadata['bytes-used'] = bytes_used + params.get('bytes-used')
 
                 blob.metadata = metadata
+                # print(metadata)
                 deadline = Retry(deadline=60)
                 blob.patch(timeout=10, retry=deadline)
             elif data == 'DELETE':
@@ -68,11 +69,21 @@ class SynchronizeCounters():
                 metadata['bytes-used'] = bytes_used - params.get('bytes-used')
 
                 blob.metadata = metadata
+                # print(metadata)
                 deadline = Retry(deadline=60)
                 blob.patch(timeout=10, retry=deadline)
 
         bucket.labels = labels
-        deadline = Retry(deadline=60)
-        bucket.patch(timeout=10, retry=deadline)
+        # print(labels)
+        try:
+            deadline = Retry(deadline=60)
+            bucket.patch(timeout=10, retry=deadline)
 
-        message.ack()
+            # message.ack()
+            # print('======> ack')
+        except RetryError:
+            # message.nack()
+            # print('======> nack')
+            return False
+
+        return True
