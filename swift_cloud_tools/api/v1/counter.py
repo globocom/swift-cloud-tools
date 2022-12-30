@@ -27,18 +27,17 @@ class Counter(Resource):
         """Create counter register by container and object"""
 
         params = request.get_json()
+        msg = "incorrect parameters ['action', 'kind', 'account', 'container', 'bytes-used']"
 
         if not params and request.data:
             params = json.loads(request.data)
 
         if not params:
-            msg = "incorrect parameters ['action', 'kind', 'account', 'container', 'bytes-used']"
             return Response(msg, mimetype="text/plain", status=422)
 
         keys = set([*params.keys()])
 
         if not keys.issubset(KEYS):
-            msg = "incorrect parameters ['action', 'kind', 'account', 'container', 'bytes-used']"
             return Response(msg, mimetype="text/plain", status=422)
 
         action = params.get('action')
@@ -48,11 +47,9 @@ class Counter(Resource):
         bytes_used = params.get('bytes-used')
 
         if not action or not kind or not account:
-            msg = "incorrect parameters ['action', 'kind', 'account', 'container', 'bytes-used']"
             return Response(msg, mimetype="text/plain", status=422)
 
         if kind == 'container' and (not container or not bytes_used):
-            msg = "incorrect parameters ['action', 'kind', 'account', 'container', 'bytes-used']"
             return Response(msg, mimetype="text/plain", status=422)
 
         project_id = os.environ.get("GOOGLE_CLOUD_PROJECT")
@@ -73,18 +70,17 @@ class Counter(Resource):
         """Delete counter register by container and object"""
 
         params = request.get_json()
+        msg = "incorrect parameters ['action', 'kind', 'account', 'container', 'bytes-used']"
 
         if not params and request.data:
             params = json.loads(request.data)
 
         if not params:
-            msg = "incorrect parameters ['action', 'kind', 'account', 'container', 'bytes-used']"
             return Response(msg, mimetype="text/plain", status=422)
 
         keys = set([*params.keys()])
 
         if not keys.issubset(KEYS):
-            msg = "incorrect parameters ['action', 'kind', 'account', 'container', 'bytes-used']"
             return Response(msg, mimetype="text/plain", status=422)
 
         action = params.get('action')
@@ -94,11 +90,9 @@ class Counter(Resource):
         bytes_used = params.get('bytes-used')
 
         if not action or not kind or not account:
-            msg = "incorrect parameters ['action', 'kind', 'account', 'container', 'bytes-used']"
             return Response(msg, mimetype="text/plain", status=422)
 
         if kind == 'container' and (not container or not bytes_used):
-            msg = "incorrect parameters ['action', 'kind', 'account', 'container', 'bytes-used']"
             return Response(msg, mimetype="text/plain", status=422)
 
         project_id = os.environ.get("GOOGLE_CLOUD_PROJECT")
