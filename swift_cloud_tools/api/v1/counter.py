@@ -16,7 +16,7 @@ from swift_cloud_tools.decorators import is_authenticated
 ns = api.namespace('counter', description='Counter')
 
 TOPIC = 'updates'
-KEYS = set(['action', 'kind', 'account', 'container'])
+KEYS = set(['action', 'kind', 'account', 'container', 'bytes-used'])
 
 
 @ns.route('/')
@@ -32,22 +32,27 @@ class Counter(Resource):
             params = json.loads(request.data)
 
         if not params:
-            msg = "incorrect parameters ['action', 'kind', 'account', 'container']"
+            msg = "incorrect parameters ['action', 'kind', 'account', 'container', 'bytes-used']"
             return Response(msg, mimetype="text/plain", status=422)
 
         keys = set([*params.keys()])
 
         if not keys.issubset(KEYS):
-            msg = "incorrect parameters ['action', 'kind', 'account', 'container']"
+            msg = "incorrect parameters ['action', 'kind', 'account', 'container', 'bytes-used']"
             return Response(msg, mimetype="text/plain", status=422)
 
         action = params.get('action')
         kind = params.get('kind')
         account = params.get('account')
         container = params.get('container')
+        bytes_used = params.get('bytes-used')
 
         if not action or not kind or not account:
-            msg = "incorrect parameters ['action', 'kind', 'account', 'container']"
+            msg = "incorrect parameters ['action', 'kind', 'account', 'container', 'bytes-used']"
+            return Response(msg, mimetype="text/plain", status=422)
+
+        if kind == 'container' and (not container or not bytes_used):
+            msg = "incorrect parameters ['action', 'kind', 'account', 'container', 'bytes-used']"
             return Response(msg, mimetype="text/plain", status=422)
 
         project_id = os.environ.get("GOOGLE_CLOUD_PROJECT")
@@ -73,22 +78,27 @@ class Counter(Resource):
             params = json.loads(request.data)
 
         if not params:
-            msg = "incorrect parameters ['action', 'kind', 'account', 'container']"
+            msg = "incorrect parameters ['action', 'kind', 'account', 'container', 'bytes-used']"
             return Response(msg, mimetype="text/plain", status=422)
 
         keys = set([*params.keys()])
 
         if not keys.issubset(KEYS):
-            msg = "incorrect parameters ['action', 'kind', 'account', 'container']"
+            msg = "incorrect parameters ['action', 'kind', 'account', 'container', 'bytes-used']"
             return Response(msg, mimetype="text/plain", status=422)
 
         action = params.get('action')
         kind = params.get('kind')
         account = params.get('account')
         container = params.get('container')
+        bytes_used = params.get('bytes-used')
 
         if not action or not kind or not account:
-            msg = "incorrect parameters ['action', 'kind', 'account', 'container']"
+            msg = "incorrect parameters ['action', 'kind', 'account', 'container', 'bytes-used']"
+            return Response(msg, mimetype="text/plain", status=422)
+
+        if kind == 'container' and (not container or not bytes_used):
+            msg = "incorrect parameters ['action', 'kind', 'account', 'container', 'bytes-used']"
             return Response(msg, mimetype="text/plain", status=422)
 
         project_id = os.environ.get("GOOGLE_CLOUD_PROJECT")

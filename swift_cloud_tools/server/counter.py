@@ -4,25 +4,25 @@ import os
 
 from google.cloud import pubsub_v1
 
+from swift_cloud_tools.server.synchronize_counter import SynchronizeCounters
 from swift_cloud_tools import create_app
 
 SUBSCRIPTION = 'updates'
+
+app = create_app('config/{}_config.py'.format(os.environ.get("FLASK_CONFIG")))
+ctx = app.app_context()
+ctx.push()
 
 
 async def work():
     project_id = os.environ.get("GOOGLE_CLOUD_PROJECT")
 
-    app = create_app('config/{}_config.py'.format(os.environ.get("FLASK_CONFIG")))
-    ctx = app.app_context()
-    ctx.push()
-
     subscriber = pubsub_v1.SubscriberClient()
     subscription_path = subscriber.subscription_path(project_id, SUBSCRIPTION)
 
     def callback(message: pubsub_v1.subscriber.message.Message) -> None:
-        print(message.data)
-        print(message.attributes.get('params'))
-        message.ack()
+        sync = SynchronizeCounters()
+        sync.synchronize(message)
 
     while True:
         app.logger.info('[SERVICE][COUNTER] Counter task started')
@@ -37,8 +37,8 @@ async def work():
             # subscriber.close()
 
         app.logger.info('[SERVICE][COUNTER] Counter task completed')
-        app.logger.info('[SERVICE][COUNTER] Sending passive monitoring to zabbix')
-        zabbix.send()
+        # app.logger.info('[SERVICE][COUNTER] Sending passive monitoring to zabbix')
+        # zabbix.send()
 
         await asyncio.sleep(int(os.environ.get("COUNTER_TIME", '300')))
 
