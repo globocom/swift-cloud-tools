@@ -50,6 +50,11 @@ class Google():
             client_options={'api_endpoint': os.environ.get("GCS_API_ACCESS_ENDPOINT")}
         )
 
+    def get_client(self):
+        return service_account.Credentials.from_service_account_info(
+            json.loads(os.environ.get("GCP_CREDENTIALS"))
+        )
+
     def get_billing_client(self):
         credentials = self._get_credentials()
         return billing_v1.CloudCatalogClient(
