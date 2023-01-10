@@ -54,7 +54,6 @@ class SynchronizeCounters():
             blob = bucket.get_blob(container)
             self.app.logger.info('[COUNTER] container: {}'.format(container))
             self.app.logger.info('[COUNTER] labels before: {}'.format(labels))
-            self.app.logger.info('[COUNTER] metadata before: {}'.format(blob.metadata))
 
             if blob and blob.exists():
                 metadata = blob.metadata
@@ -63,6 +62,7 @@ class SynchronizeCounters():
                 object_count_label = int(labels.get('object-count', 0))
                 bytes_used_label = int(labels.get('bytes-used', 0))
 
+                self.app.logger.info('[COUNTER] metadata before: {}'.format(metadata))
                 self.app.logger.info('[COUNTER] counter: {}'.format(counter))
 
                 if data == 'CREATE':

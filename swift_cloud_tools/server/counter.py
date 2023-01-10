@@ -48,7 +48,11 @@ async def work():
 
         # Pulling a Subscription Synchronously
         for msg in response.received_messages:
-            synchronize = sync.synchronize(msg.message)
+            try:
+                synchronize = sync.synchronize(msg.message)
+            except AttributeError:
+                sync = SynchronizeCounters()
+                synchronize = sync.synchronize(msg.message)
 
             try:
                 if synchronize:
