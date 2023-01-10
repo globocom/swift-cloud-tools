@@ -2,7 +2,7 @@
 import json
 import os
 
-from google.api_core.exceptions import NotFound, RetryError
+from google.api_core.exceptions import NotFound, RetryError, Conflict
 from google.api_core.retry import Retry
 
 from swift_cloud_tools.server.utils import Google
@@ -11,12 +11,13 @@ from swift_cloud_tools import create_app
 
 class SynchronizeCounters():
 
+    def __init__(self):
+        self.app = create_app('config/{}_config.py'.format(os.environ.get("FLASK_CONFIG")))
+        ctx = self.app.app_context()
+        ctx.push()
+
     def synchronize(self, message):
         """Get project in swift."""
-
-        app = create_app('config/{}_config.py'.format(os.environ.get("FLASK_CONFIG")))
-        ctx = app.app_context()
-        ctx.push()
 
         data = message.data.decode("utf-8")
         params = json.loads(message.attributes.get('params'))
@@ -32,9 +33,9 @@ class SynchronizeCounters():
                 timeout=30
             )
         except NotFound:
-            app.logger.error('[COUNTER] GET bucket: bucket not found')
+            self.app.logger.error('[COUNTER] GET bucket: bucket not found')
         except Exception as err:
-            app.logger.error('[COUNTER] GET bucket: {}'.format(err))
+            self.app.logger.error('[COUNTER] GET bucket: {}'.format(err))
 
         labels = bucket.labels
         container_count = int(labels.get('container-count', 0))
@@ -51,45 +52,62 @@ class SynchronizeCounters():
         elif params.get('kind') == 'container':
             container = '{}/'.format(params.get('container'))
             blob = bucket.get_blob(container)
-            app.logger.info('[COUNTER] container: {}'.format(container))
+            self.app.logger.info('[COUNTER] container: {}'.format(container))
+            self.app.logger.info('[COUNTER] labels before: {}'.format(labels))
+            self.app.logger.info('[COUNTER] metadata before: {}'.format(blob.metadata))
 
             if blob and blob.exists():
                 metadata = blob.metadata
-                object_count = int(metadata.get('object-count', 0))
-                bytes_used = int(metadata.get('bytes-used', 0))
+                object_count_meta = int(metadata.get('object-count', 0))
+                bytes_used_meta = int(metadata.get('bytes-used', 0))
+                object_count_label = int(labels.get('object-count', 0))
+                bytes_used_label = int(labels.get('bytes-used', 0))
+
+                self.app.logger.info('[COUNTER] counter: {}'.format(counter))
 
                 if data == 'CREATE':
-                    labels['object-count'] = object_count + counter
-                    labels['bytes-used'] = bytes_used + params.get('bytes-used')
+                    labels['object-count'] = object_count_label + counter
+                    labels['bytes-used'] = bytes_used_label + params.get('bytes-used')
 
-                    metadata['object-count'] = object_count + counter
-                    metadata['bytes-used'] = bytes_used + params.get('bytes-used')
+                    metadata['object-count'] = object_count_meta + counter
+                    metadata['bytes-used'] = bytes_used_meta + params.get('bytes-used')
 
                     blob.metadata = metadata
-                    deadline = Retry(deadline=60)
-                    blob.patch(timeout=10, retry=deadline)
-                    app.logger.info('[COUNTER] metadata: {}'.format(metadata))
+                    try:
+                        deadline = Retry(deadline=60)
+                        blob.patch(timeout=60, retry=deadline)
+                    except Conflict:
+                        pass
+                    self.app.logger.info('[COUNTER] metadata after: {}'.format(metadata))
                 elif data == 'DELETE':
-                    labels['object-count'] = object_count - counter
-                    labels['bytes-used'] = bytes_used - params.get('bytes-used')
+                    labels['object-count'] = object_count_label - counter
+                    labels['bytes-used'] = bytes_used_label - params.get('bytes-used')
 
-                    metadata['object-count'] = object_count - counter
-                    metadata['bytes-used'] = bytes_used - params.get('bytes-used')
+                    metadata['object-count'] = object_count_meta - counter
+                    metadata['bytes-used'] = bytes_used_meta - params.get('bytes-used')
 
                     blob.metadata = metadata
-                    deadline = Retry(deadline=60)
-                    blob.patch(timeout=10, retry=deadline)
-                    app.logger.info('[COUNTER] metadata: {}'.format(metadata))
+                    try:
+                        deadline = Retry(deadline=60)
+                        blob.patch(timeout=60, retry=deadline)
+                    except Conflict:
+                        pass
+                    self.app.logger.info('[COUNTER] metadata after: {}'.format(metadata))
 
         bucket.labels = labels
 
         try:
             # ack
-            deadline = Retry(deadline=60)
-            bucket.patch(timeout=10, retry=deadline)
-            app.logger.info('[COUNTER] labels: {}'.format(labels))
+            try:
+                deadline = Retry(deadline=60)
+                bucket.patch(timeout=60, retry=deadline)
+            except Conflict:
+                pass
+            self.app.logger.info('[COUNTER] labels after: {}'.format(labels))
         except RetryError:
             # nack
+            bucket = None
             return False
 
+        bucket = None
         return True

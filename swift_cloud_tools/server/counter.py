@@ -27,10 +27,7 @@ async def work():
     subscriber = pubsub_v1.SubscriberClient(credentials=credentials)
     subscription_path = subscriber.subscription_path(project_id, SUBSCRIPTION)
 
-    def callback(message: pubsub_v1.subscriber.message.Message) -> None:
-        sync = SynchronizeCounters()
-        synchronize = sync.synchronize(message)
-        synchronize = None
+    sync = SynchronizeCounters()
 
     while True:
         app.logger.info('[SERVICE][COUNTER] Counter task started')
@@ -51,7 +48,6 @@ async def work():
 
         # Pulling a Subscription Synchronously
         for msg in response.received_messages:
-            sync = SynchronizeCounters()
             synchronize = sync.synchronize(msg.message)
 
             try:
@@ -74,10 +70,12 @@ async def work():
                     )
                     app.logger.info('[SERVICE][COUNTER] nack')
 
-                synchronize = None
             except InvalidArgument:
-                synchronize = None
-                continue
+                pass
+
+            synchronize = None
+
+        response = None
 
         app.logger.info('[SERVICE][COUNTER] Counter task completed')
         # app.logger.info('[SERVICE][COUNTER] Sending passive monitoring to zabbix')
