@@ -39,6 +39,9 @@ class SynchronizeCounters():
 
         labels = bucket.labels
         container_count = int(labels.get('container-count', 0))
+        container = '{}/'.format(params.get('container'))
+
+        self.app.logger.info('[COUNTER] container: {}'.format(container))
 
         if params.get('kind') == 'account':
             if data == 'CREATE':
@@ -50,9 +53,7 @@ class SynchronizeCounters():
                 labels['object-count'] = 0
                 labels['bytes-used'] = 0
         elif params.get('kind') == 'container':
-            container = '{}/'.format(params.get('container'))
             blob = bucket.get_blob(container)
-            self.app.logger.info('[COUNTER] container: {}'.format(container))
             self.app.logger.info('[COUNTER] labels before: {}'.format(labels))
 
             if blob and blob.exists():
@@ -94,6 +95,8 @@ class SynchronizeCounters():
                         pass
                     self.app.logger.info('[COUNTER] metadata after: {}'.format(metadata))
 
+            del blob
+
         bucket.labels = labels
 
         try:
@@ -106,8 +109,8 @@ class SynchronizeCounters():
             self.app.logger.info('[COUNTER] labels after: {}'.format(labels))
         except RetryError:
             # nack
-            bucket = None
+            del bucket
             return False
 
-        bucket = None
+        del bucket
         return True

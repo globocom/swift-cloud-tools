@@ -2,6 +2,7 @@
 import asyncio
 import time
 import os
+import gc
 
 from google.cloud import pubsub_v1
 from google.api_core.exceptions import NotFound, InvalidArgument
@@ -77,9 +78,10 @@ async def work():
             except InvalidArgument:
                 pass
 
-            synchronize = None
+            del synchronize
 
-        response = None
+        del response
+        gc.collect()
 
         app.logger.info('[SERVICE][COUNTER] Counter task completed')
         # app.logger.info('[SERVICE][COUNTER] Sending passive monitoring to zabbix')
