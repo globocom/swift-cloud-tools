@@ -220,21 +220,22 @@ class Swift():
 class Health():
 
     def __init__(self):
-        self.hostinfo_url = app.config.get('HOST_INFO_URL')
         self.prometheus = PrometheusConnect(url=app.config.get('PROMETHEUS_URL'), disable_ssl=False)
 
     def _get_fe_hosts(self):
         hosts = []
 
         try:
-            response = requests.get(self.hostinfo_url)
-            if response.status_code == 200:
-                for host in response.json():
+            hosts_json = json.loads(app.config.get('FE_HOSTS', '[]'))
+            for host in hosts_json:
+                host_name = host.get('Nome')
+                if host_name is None:
+                    logger.error(f'Error when decoding FE_HOSTS variable: Host doesn\'t have property \'Nome\'')
+                    return []
+                else:
                     hosts.append(host.get('Nome'))
-            else:
-                logger.error(f'Hostinfo error: {response.content}')
         except Exception as err:
-            logger.error(f'Hostinfo connection error: {err}')
+            logger.error(f'Error when decoding FE_HOSTS variable: {err}')
 
         return hosts
 
