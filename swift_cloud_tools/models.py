@@ -486,3 +486,129 @@ class ProjectContainerHostname(db.Model, SaveDeleteModel):
                 self.project_id, self.container_name, self.hostname), status
 
         return msg, status
+
+
+class TransferContainerPaginated(db.Model, SaveDeleteModel):
+    id = db.Column(db.Integer, primary_key=True)
+    project_id = db.Column(db.String(64), nullable=False, index=True)
+    project_name = db.Column(db.String(64), nullable=False)
+    container_name = db.Column(db.String(255), nullable=False)
+    marker = db.Column(db.String(255), nullable=True)
+    hostname = db.Column(db.String(255, nullable=True, default=None))
+    environment = db.Column(db.String(10), nullable=False)
+    object_count_swift = db.Column(db.Integer, default=0, nullable=True)
+    bytes_used_swift = db.Column(BIGINT(unsigned=True), default=0, nullable=True)
+    count_error = db.Column(db.Integer, default=0, nullable=True)
+    object_count_gcp = db.Column(db.Integer, default=0, nullable=True)
+    bytes_used_gcp = db.Column(BIGINT(unsigned=False), default=0, nullable=True)
+    initial_date = db.Column(db.DateTime, nullable=True)
+    final_date = db.Column(db.DateTime, nullable=True)
+
+    def __init__(self, project_id, project_name, container_name, marker, hostname, environment,
+                 object_count_swift=None, bytes_used_swift=None, count_error=None,
+                 object_count_gcp=None, bytes_used_gcp=None,
+                 initial_date=None, final_date=None):
+        self.project_id = project_id
+        self.project_name = project_name
+        self.container_name = container_name
+        self.marker = marker
+        self.hostname = hostname
+        self.environment = environment
+        self.object_count_swift = object_count_swift
+        self.bytes_used_swift = bytes_used_swift
+        self.count_error = count_error
+        self.object_count_gcp = object_count_gcp
+        self.bytes_used_gcp = bytes_used_gcp
+        self.initial_date = initial_date
+        self.final_date = final_date
+
+    __table_args__ = (
+        db.UniqueConstraint(project_id, container_name, marker),
+    )
+
+    def to_dict(self):
+        tp = {
+            "project_id": self.project_id,
+            "project_name": self.project_name,
+            "container_name": self.container_name,
+            "marker": self.marker,
+            "hostname": self.hostname,
+            "environment": self.environment,
+            "object_count_swift": self.object_count_swift,
+            "bytes_used_swift": self.bytes_used_swift,
+            "count_error": self.count_error,
+            "object_count_gcp": self.object_count_gcp,
+            "bytes_used_gcp": self.bytes_used_gcp,
+            "initial_date": "",
+            "final_date": ""
+        }
+
+        if self.initial_date:
+            tp["initial_date"] = datetime.strftime(
+                self.initial_date, "%Y-%m-%d %H:%M:%S")
+
+        if self.final_date:
+            tp["final_date"] = datetime.strftime(
+                self.final_date, "%Y-%m-%d %H:%M:%S")
+
+        return tp
+
+    def find_transfer_container(project_id, container_name, marker):
+        transfer_container = (TransferContainerPaginated.query
+            .filter(func.lower(TransferContainerPaginated.project_id) == project_id)
+            .filter(func.lower(TransferContainerPaginated.container_name) == container_name)
+            .filter(func.lower(TransferContainerPaginated.marker) == marker)
+        )
+
+        if transfer_container.count() > 0:
+            return transfer_container.first()
+        else:
+            return None
+
+    def save(self):
+        msg, status = SaveDeleteModel.save(self)
+
+        if status == 201:
+            return "Transfer project '{}' container '{}' marker '{}' environment '{}' created".format(
+                self.project_name, self.container_name, self.marker, self.environment), status
+
+        return msg, status
+
+    def delete(self):
+        msg, status = SaveDeleteModel.delete(self)
+
+        if status == 200:
+            return "Transfer project '{}' container '{}' marker '{}' environment '{}' deleted".format(
+                self.project_name, self.container_name, self.marker, self.environment), status
+
+        return msg, status
+
+
+class TransferContainerPaginatedError(db.Model, SaveDeleteModel):
+    id = db.Column(db.Integer, primary_key=True)
+    object_error = db.Column(db.String(255), nullable=False)
+    transfer_container_paginated_id = db.Column(db.Integer, db.ForeignKey('transfer_container_paginated.id'))
+    created = db.Column(db.DateTime, default=datetime.utcnow)
+
+    def __init__(self, object_error, transfer_container_paginated_id, created):
+        self.object_error = object_error
+        self.transfer_container_paginated_id = transfer_container_paginated_id
+        self.created = created
+
+    def save(self):
+        msg, status = SaveDeleteModel.save(self)
+
+        if status == 201:
+            return "Transfer container paginated error '{}' - {} created".format(
+                self.object_error, self.transfer_container_paginated_id), status
+
+        return msg, status
+
+    def delete(self):
+        msg, status = SaveDeleteModel.delete(self)
+
+        if status == 200:
+            return "Transfer container paginated error '{}' - {} deleted".format(
+                self.object_error, self.transfer_container_paginated_id), status
+
+        return msg, status
