@@ -21,7 +21,7 @@ KEYSTONE_ADMIN_URL = os.environ.get("KEYSTONE_ADMIN_URL")
 API_KEY = os.environ.get("API_KEY", "toolsapikey")
 X_CLOUD_BYPASS = os.environ.get("X_CLOUD_BYPASS", "xcloudbypass")
 
-HOST_INFO_URL = os.environ.get("HOST_INFO_URL")
+FE_HOSTS = os.environ.get("FE_HOSTS")
 PROMETHEUS_URL = os.environ.get("PROMETHEUS_URL")
 
 # SSH_USERNAME = os.environ.get("SSH_USERNAME")
