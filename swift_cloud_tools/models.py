@@ -494,7 +494,7 @@ class TransferContainerPaginated(db.Model, SaveDeleteModel):
     project_name = db.Column(db.String(64), nullable=False)
     container_name = db.Column(db.String(255), nullable=False)
     marker = db.Column(db.String(255), nullable=True)
-    hostname = db.Column(db.String(255, nullable=True, default=None))
+    hostname = db.Column(db.String(255), nullable=True, default=None)
     environment = db.Column(db.String(10), nullable=False)
     object_count_swift = db.Column(db.Integer, default=0, nullable=True)
     bytes_used_swift = db.Column(BIGINT(unsigned=True), default=0, nullable=True)
