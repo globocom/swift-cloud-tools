@@ -151,16 +151,16 @@ class Swift():
         except Exception as err:
             raise err
 
-    def get_container(self, container, prefix=None, marker=None):
+    def get_container(self, container, prefix=None, marker=None, delimiter='/', full_listing=True):
         try:
             return swift_client.get_container(
                 self.storage_url,
                 self.conn.auth_token,
                 container,
-                delimiter='/',
+                delimiter=delimiter,
                 prefix=prefix,
                 marker=marker,
-                full_listing=True,
+                full_listing=full_listing,
                 http_conn=self.http_conn,
                 headers={'X-Cloud-Bypass': self.x_cloud_bypass}
             )
