@@ -87,6 +87,14 @@ class SynchronizeContainersPaginated():
                 self.app.logger.error("[synchronize] 500 Query 'mysql': {}".format(err))
                 time.sleep(5)
 
+        while True:
+            try:
+                transfer_container_paginated = TransferContainerPaginated.find_transfer_container(project_id, container_name, marker)
+                break
+            except Exception as err:
+                self.app.logger.error("[synchronize] 500 Query 'mysql': {}".format(err))
+                time.sleep(5)
+
         storage_client = google.get_storage_client()
         account = 'auth_{}'.format(project_id)
         time.sleep(int(uniform(5, 10)))
@@ -175,6 +183,7 @@ class SynchronizeContainersPaginated():
                     container_name,
                     transfer,
                     transfer_object,
+                    transfer_container_paginated,
                     parts[i]
                 ))
                 threads[i].start()
@@ -259,7 +268,7 @@ class SynchronizeContainersPaginated():
                 time.sleep(5)
 
 
-    def _get_container(self, app, storage_client, account, container, transfer, transfer_object, objects):
+    def _get_container(self, app, storage_client, account, container, transfer, transfer_object, transfer_container_paginated, objects):
         ctx = app.app_context()
         ctx.push()
 
