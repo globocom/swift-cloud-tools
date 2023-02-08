@@ -136,8 +136,12 @@ async def work():
                 x.start()
                 threads[thread_name] = x
             except Exception as err:
-                app.logger.info("[SERVICE][TRANSFER_CONTAINER] 500 Save 'mysql': {}".format(err))
-                continue
+                if '1062' in str(err):
+                    # "Duplicate entry", 409
+                    continue
+                else:
+                    app.logger.info("[SERVICE][TRANSFER_CONTAINER] 500 Save 'mysql': {}".format(err))
+                    continue
 
         app.logger.info('[SERVICE][TRANSFER_CONTAINER] Transfer container task completed')
         app.logger.info('[SERVICE][TRANSFER_CONTAINER] Sending passive monitoring to zabbix')
