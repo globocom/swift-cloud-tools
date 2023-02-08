@@ -15,3 +15,6 @@ swift_cloud_tools.conf
 .vscode/
 TODO
 .DS_Store
+
+env*.txt
+*.csv
