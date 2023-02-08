@@ -41,6 +41,10 @@ class SynchronizeContainersPaginated():
         self.marker = marker
         self.hostname = hostname
 
+        self.app = create_app('config/{}_config.py'.format(os.environ.get("FLASK_CONFIG")))
+        ctx = self.app.app_context()
+        ctx.push()
+
         while True:
             try:
                 self.transfer_object = TransferProject.find_transfer_project(project_id)
@@ -55,7 +59,7 @@ class SynchronizeContainersPaginated():
         self.conn = self.keystone.get_keystone_connection()
         self.swift = Swift(self.conn, project_id)
 
-    def synchronize(self, project_id, container_name, hostname, marker):
+    def synchronize(self, project_id, container_name, marker, hostname):
         """Get project in swift."""
 
         self.project_id = project_id
@@ -194,9 +198,7 @@ class SynchronizeContainersPaginated():
                 if count == 0:
                     db.session.begin()
                 transfer_project = db.session.query(TransferProject).filter_by(project_id=transfer_object.project_id).first()
-                transfer_project.last_object = transfer.last_object
                 transfer_project.count_error = TransferProject.count_error + transfer.count_error
-                transfer_project.container_count_gcp = TransferProject.container_count_gcp + 1
                 transfer_project.object_count_gcp = TransferProject.object_count_gcp + transfer.object_count_gcp
                 transfer_project.bytes_used_gcp = TransferProject.bytes_used_gcp + transfer.bytes_used_gcp
                 time.sleep(0.1)
@@ -219,10 +221,10 @@ class SynchronizeContainersPaginated():
                     db.session.begin()
                 transfer_container_paginated = db.session.query(TransferContainerPaginated).filter_by(
                     project_id=transfer_object.project_id,
-                    container_name=container_name
+                    container_name=container_name,
+                    marker=marker
                 ).first()
                 transfer_container_paginated.count_error = TransferContainerPaginated.count_error + transfer.count_error
-                transfer_container_paginated.container_count_gcp = 1
                 transfer_container_paginated.object_count_gcp = TransferContainerPaginated.object_count_gcp + transfer.object_count_gcp
                 transfer_container_paginated.bytes_used_gcp = TransferContainerPaginated.bytes_used_gcp + transfer.bytes_used_gcp
                 time.sleep(0.1)
@@ -267,10 +269,10 @@ class SynchronizeContainersPaginated():
         )
 
         for obj in objects:
-            if obj.get('content_type') == "application/directory" and len(obj.get('name', '')) > 0
-                        and obj.get('name','')[-1] == "/":
-                prefix = obj.get('name')
+            if obj.get('content_type') == "application/directory" and \
+                len(obj.get('name', '')) > 0 and obj.get('name','')[-1] == "/":
 
+                prefix = obj.get('name')
                 blob = bucket.blob('{}/{}'.format(container, prefix))
 
                 try:
@@ -279,11 +281,11 @@ class SynchronizeContainersPaginated():
                         num_retries=3,
                         timeout=30
                     )
-                    # app.logger.info("[{}] 201 PUT folder '{}/{}': Created".format(
-                    #     transfer_object.project_name,
-                    #     container,
-                    #     prefix
-                    # ))
+                    app.logger.info("[{}] 201 PUT folder '{}/{}': Created".format(
+                        transfer_object.project_name,
+                        container,
+                        prefix
+                    ))
                 except BadRequest:
                     transfer.count_error += 1
                     app.logger.error("[{}] 400 PUT folder '{}/{}': BadRequest".format(
@@ -517,12 +519,12 @@ class SynchronizeContainersPaginated():
                             num_retries=3,
                             timeout=900
                         )
-                        # app.logger.info("[{}] 201 PUT object '{}' {} {}: Created".format(
-                        #     transfer_object.project_name,
-                        #     obj_path,
-                        #     obj.get('content_type'),
-                        #     len(content)
-                        # ))
+                        app.logger.info("[{}] 201 PUT object '{}' {} {}: Created".format(
+                            transfer_object.project_name,
+                            obj_path,
+                            obj.get('content_type'),
+                            len(content)
+                        ))
                     except BadRequest:
                         transfer.count_error += 1
                         app.logger.error("[{}] 400 PUT object '{}' {}: BadRequest".format(
