@@ -24,12 +24,13 @@ logging.getLogger("boto3").setLevel(logging.WARNING)
 class Transfer():
 
     def __init__(self, last_object='', count_error=0, container_count_gcp=0, object_count_gcp=0,
-                 bytes_used_gcp=0):
+                 bytes_used_gcp=0, folders=[]):
         self.last_object = last_object
         self.count_error = count_error
         self.container_count_gcp = container_count_gcp
         self.object_count_gcp = object_count_gcp
         self.bytes_used_gcp = bytes_used_gcp
+        self.folders = folders
 
 
 class Google():
