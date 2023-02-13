@@ -507,10 +507,10 @@ class SynchronizeProjects():
                         num_retries=3,
                         timeout=30
                     )
-                    # app.logger.info("[{}] 201 PUT container '{}': Created".format(
-                    #     self.project_name,
-                    #     container_name
-                    # ))
+                    app.logger.info("[{}] 201 PUT container '{}': Created".format(
+                        self.project_name,
+                        container_name
+                    ))
                     counts[index] += 1
                 except BadRequest:
                     transfer.count_error += 1
@@ -698,11 +698,11 @@ class SynchronizeProjects():
                         num_retries=3,
                         timeout=30
                     )
-                    # self.app.logger.info("[{}] 201 PUT folder '{}/{}': Created".format(
-                    #     transfer_object.project_name,
-                    #     container,
-                    #     prefix
-                    # ))
+                    self.app.logger.info("[{}] 201 PUT folder '{}/{}': Created".format(
+                        transfer_object.project_name,
+                        container,
+                        prefix
+                    ))
                 except BadRequest:
                     transfer.count_error += 1
                     self.app.logger.error("[{}] 400 PUT folder '{}/{}': BadRequest".format(
@@ -811,6 +811,26 @@ class SynchronizeProjects():
                             break
                         except Exception as err:
                             self.app.logger.error("[synchronize] 500 Flush object 'bucket': {}".format(
+                                err
+                            ))
+                            time.sleep(5)
+                    self.app.logger.info('patch.......')
+
+                    while True:
+                        try:
+                            blob = bucket.get_blob(container + '/')
+                            metadata = blob.metadata or {}
+                            object_count_meta = int(metadata.get('object-count', 0))
+                            bytes_used_meta = int(metadata.get('bytes-used', 0))
+                            metadata['object-count'] = object_count_meta + transfer.object_count_gcp
+                            metadata['bytes-used'] = bytes_used_meta + transfer.bytes_used_gcp
+                            blob.metadata = metadata
+                            time.sleep(0.1)
+                            deadline = Retry(deadline=60)
+                            blob.patch(timeout=10, retry=deadline)
+                            break
+                        except Exception as err:
+                            self.app.logger.error("[synchronize] 500 Save 'bucket': {}".format(
                                 err
                             ))
                             time.sleep(5)
@@ -1019,12 +1039,12 @@ class SynchronizeProjects():
                             num_retries=3,
                             timeout=900
                         )
-                        # self.app.logger.info("[{}] 201 PUT object '{}' {} {}: Created".format(
-                        #     transfer_object.project_name,
-                        #     obj_path,
-                        #     obj.get('content_type'),
-                        #     len(content)
-                        # ))
+                        self.app.logger.info("[{}] 201 PUT object '{}' {} {}: Created".format(
+                            transfer_object.project_name,
+                            obj_path,
+                            obj.get('content_type'),
+                            len(content)
+                        ))
                     except BadRequest:
                         transfer.count_error += 1
                         self.app.logger.error("[{}] 400 PUT object '{}' {}: BadRequest".format(
@@ -1134,6 +1154,26 @@ class SynchronizeProjects():
                                 break
                             except Exception as err:
                                 self.app.logger.error("[synchronize] 500 Flush object 'bucket': {}".format(
+                                    err
+                                ))
+                                time.sleep(5)
+                        self.app.logger.info('patch.......')
+
+                        while True:
+                            try:
+                                blob = bucket.get_blob(container + '/')
+                                metadata = blob.metadata or {}
+                                object_count_meta = int(metadata.get('object-count', 0))
+                                bytes_used_meta = int(metadata.get('bytes-used', 0))
+                                metadata['object-count'] = object_count_meta + transfer.object_count_gcp
+                                metadata['bytes-used'] = bytes_used_meta + transfer.bytes_used_gcp
+                                blob.metadata = metadata
+                                time.sleep(0.1)
+                                deadline = Retry(deadline=60)
+                                blob.patch(timeout=10, retry=deadline)
+                                break
+                            except Exception as err:
+                                self.app.logger.error("[synchronize] 500 Save 'bucket': {}".format(
                                     err
                                 ))
                                 time.sleep(5)
