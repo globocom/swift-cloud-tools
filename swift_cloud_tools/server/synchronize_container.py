@@ -42,7 +42,7 @@ class SynchronizeContainers():
 
         while True:
             try:
-                self.transfer_object = TransferProject.find_transfer_project(project_id)
+                self.transfer_object = TransferProject.find_transfer_project(self.project_id)
                 break
             except Exception as err:
                 time.sleep(5)
@@ -52,7 +52,7 @@ class SynchronizeContainers():
 
         self.keystone = Keystone()
         self.conn = self.keystone.get_keystone_connection()
-        self.swift = Swift(self.conn, project_id)
+        self.swift = Swift(self.conn, self.project_id)
 
     def synchronize(self, project_id, container_name, hostname):
         """Get project in swift."""
@@ -75,14 +75,74 @@ class SynchronizeContainers():
 
         while True:
             try:
-                transfer_object = TransferProject.find_transfer_project(project_id)
+                transfer_object = TransferProject.find_transfer_project(self.project_id)
                 break
             except Exception as err:
                 self.app.logger.error("[synchronize] 500 Query 'mysql': {}".format(err))
                 time.sleep(5)
 
+        error = False
+
+        try:
+            account_stat, containers = self.swift.get_account()
+        except requests.exceptions.ConnectionError:
+            try:
+                self.conn = self.keystone.get_keystone_connection()
+                self.swift = Swift(self.conn, self.project_id)
+                account_stat, containers = self.swift.get_account()
+            except AuthorizationFailure:
+                self.app.logger.error("[{}] 500 Get account '{}': Keystone authorization failure".format(
+                    transfer_object.project_name,
+                    self.project_id
+                ))
+                error = True
+            except Exception as err:
+                self.app.logger.error("[{}] 500 Get account '{}': {}".format(
+                    transfer_object.project_name,
+                    self.project_id,
+                    err
+                ))
+                error = True
+        except json.decoder.JSONDecodeError:
+            try:
+                account_stat, containers = self.swift.get_account()
+            except Exception as e:
+                self.app.logger.error("[{}] 500 Get account '{}': {}".format(
+                    transfer_object.project_name,
+                    self.project_id,
+                    err
+                ))
+                error = True
+        except Exception as err:
+            self.app.logger.error("[{}] 500 GET account 'AUTH_{}': {}".format(
+                transfer_object.project_name,
+                self.project_id,
+                err
+            ))
+            error = True
+
+        if not error:
+            count = 0
+            while True:
+                try:
+                    if count == 0:
+                        db.session.begin()
+                    transfer_project = db.session.query(TransferProject).filter_by(project_id=transfer_object.project_id).first()
+                    transfer_project.container_count_swift = int(account_stat.get('x-account-container-count', 0))
+                    transfer_project.object_count_swift = int(account_stat.get('x-account-object-count', 0))
+                    transfer_project.bytes_used_swift = int(account_stat.get('x-account-bytes-used', 0))
+                    time.sleep(0.1)
+                    db.session.commit()
+                    break
+                except Exception as err:
+                    self.app.logger.error("[synchronize] 500 Save 'mysql': {}".format(
+                        err
+                    ))
+                    time.sleep(5)
+                    count += 1
+
         storage_client = google.get_storage_client()
-        account = 'auth_{}'.format(project_id)
+        account = 'auth_{}'.format(self.project_id)
         time.sleep(int(uniform(5, 10)))
 
         try:
@@ -119,8 +179,8 @@ class SynchronizeContainers():
         self.app.logger.info('========================================================')
         self.app.logger.info("[{}] SET account_meta_cloud 'AUTH_{}': {}".format(
             transfer_object.project_name,
-            project_id,
-            container_name
+            self.project_id,
+            self.container_name
         ))
 
         ########################################
@@ -128,51 +188,74 @@ class SynchronizeContainers():
         ########################################
 
         self.app.logger.info('[{}] ---------------------'.format(transfer_object.project_name))
-        self.app.logger.info('[{}] Create container: {}'.format(transfer_object.project_name, container_name))
+        self.app.logger.info('[{}] Create container: {}'.format(transfer_object.project_name, self.container_name))
 
         error = False
-        account = 'auth_{}'.format(project_id)
+        account = 'auth_{}'.format(self.project_id)
 
         try:
-            meta, objects = self.swift.get_container(container_name)
+            meta, objects = self.swift.get_container(self.container_name)
         except requests.exceptions.ConnectionError:
             try:
                 self.conn = self.keystone.get_keystone_connection()
                 self.swift = Swift(self.conn, self.project_id)
-                meta, objects = self.swift.get_container(container_name)
+                meta, objects = self.swift.get_container(self.container_name)
             except AuthorizationFailure:
                 self.app.logger.error("[{}] 500 Get container '{}': Keystone authorization failure".format(
                     self.project_name,
-                    container_name
+                    self.container_name
                 ))
                 error = True
             except Exception as err:
                 self.app.logger.error("[{}] 500 Get container '{}': {}".format(
                     self.project_name,
-                    container_name,
+                    self.container_name,
                     err
                 ))
                 error = True
         except json.decoder.JSONDecodeError:
             try:
-                meta, objects = self.swift.get_container(container_name)
+                meta, objects = self.swift.get_container(self.container_name)
             except Exception as e:
                 self.app.logger.error("[{}] 500 Get container '{}': {}".format(
                     self.project_name,
-                    container_name,
+                    self.container_name,
                     err
                 ))
                 error = True
         except Exception as err:
             self.app.logger.error("[{}] 500 Get container '{}': {}".format(
                 self.project_name,
-                container_name,
+                self.container_name,
                 err
             ))
             error = True
 
         if not error:
-            blob = bucket.blob(container_name + '/')
+            count = 0
+            while True:
+                try:
+                    if count == 0:
+                        db.session.begin()
+                    transfer_container = db.session.query(TransferContainer).filter_by(
+                        project_id=transfer_object.project_id,
+                        container_name=self.container_name
+                    ).first()
+                    transfer_container.container_count_swift = 1
+                    transfer_container.object_count_swift = meta.get('x-container-object-count', 0)
+                    transfer_container.bytes_used_swift = meta.get('x-container-bytes-used', 0)
+                    time.sleep(0.1)
+                    db.session.commit()
+                    break
+                except Exception as err:
+                    self.app.logger.error("[synchronize] 500 Save 'mysql' transfer_container: {}".format(
+                        err
+                    ))
+                    time.sleep(5)
+                    count += 1
+
+        if not error:
+            blob = bucket.blob(self.container_name + '/')
             metadata = {}
 
             metadata['object-count'] = meta.get('x-container-object-count', 0)
@@ -208,21 +291,21 @@ class SynchronizeContainers():
                     num_retries=3,
                     timeout=30
                 )
-                # self.app.logger.info("[{}] 201 PUT container '{}': Created".format(
-                #     self.project_name,
-                #     container_name
-                # ))
+                self.app.logger.info("[{}] 201 PUT container '{}': Created".format(
+                    self.project_name,
+                    self.container_name
+                ))
             except BadRequest:
                 transfer.count_error += 1
                 self.app.logger.error("[{}] 400 PUT container '{}': BadRequest".format(
                     self.project_name,
-                    container_name
+                    self.container_name
                 ))
                 while True:
                     try:
                         transfer_error = TransferContainerError(
-                            object_error=container_name,
-                            transfer_container_id=transfer_object.id,
+                            object_error=self.container_name,
+                            transfer_container_id=transfer_container.id,
                             created=datetime.now()
                         )
                         transfer_error.save()
@@ -236,13 +319,13 @@ class SynchronizeContainers():
                 transfer.count_error += 1
                 self.app.logger.error("[{}] 504 PUT container '{}': ReadTimeout".format(
                     self.project_name,
-                    container_name
+                    self.container_name
                 ))
                 while True:
                     try:
                         transfer_error = TransferContainerError(
-                            object_error=container_name,
-                            transfer_container_id=transfer_object.id,
+                            object_error=self.container_name,
+                            transfer_container_id=transfer_container.id,
                             created=datetime.now()
                         )
                         transfer_error.save()
@@ -256,14 +339,14 @@ class SynchronizeContainers():
                 transfer.count_error += 1
                 self.app.logger.error("[{}] 500 PUT container '{}': {}".format(
                     self.project_name,
-                    container_name,
+                    self.container_name,
                     err
                 ))
                 while True:
                     try:
                         transfer_error = TransferContainerError(
-                            object_error=container_name,
-                            transfer_container_id=transfer_object.id,
+                            object_error=self.container_name,
+                            transfer_container_id=transfer_container.id,
                             created=datetime.now()
                         )
                         transfer_error.save()
@@ -283,31 +366,31 @@ class SynchronizeContainers():
         self.app.logger.info('[{}] ----------'.format(transfer_object.project_name))
         self.app.logger.info('[{}] Container: {}'.format(
             transfer_object.project_name,
-            container_name
+            self.container_name
         ))
 
         try:
-            meta, objects = self.swift.get_container(container_name)
+            meta, objects = self.swift.get_container(self.container_name)
         except requests.exceptions.ConnectionError:
             try:
                 self.conn = self.keystone.get_keystone_connection()
-                self.swift = Swift(self.conn, project_id)
-                meta, objects = self.swift.get_container(container_name)
+                self.swift = Swift(self.conn, self.project_id)
+                meta, objects = self.swift.get_container(self.container_name)
             except AuthorizationFailure:
                 self.app.logger.error("[{}] 500 Get container '{}': Keystone authorization failure".format(
                     transfer_object.project_name,
-                    container_name
+                    self.container_name
                 ))
             except Exception as err:
                 self.app.logger.error("[{}] 500 Get container '{}': {}".format(
                     transfer_object.project_name,
-                    container_name,
+                    self.container_name,
                     err
                 ))
         except Exception as err:
             self.app.logger.error("[{}] 500 Get container '{}': {}".format(
                 transfer_object.project_name,
-                container_name,
+                self.container_name,
                 err
             ))
 
@@ -315,15 +398,15 @@ class SynchronizeContainers():
             self._get_container(
                 storage_client,
                 account,
-                container_name,
                 transfer,
                 transfer_object,
+                transfer_container,
                 objects
             )
 
         self.app.logger.info("[{}] Finished send_object '{}'".format(
             transfer_object.project_name,
-            container_name
+            self.container_name
         ))
 
         time.sleep(int(uniform(1, 20)) + int(uniform(5, 20)) + int(uniform(10, 20)))
@@ -362,7 +445,7 @@ class SynchronizeContainers():
                     db.session.begin()
                 transfer_container = db.session.query(TransferContainer).filter_by(
                     project_id=transfer_object.project_id,
-                    container_name=container_name
+                    container_name=self.container_name
                 ).first()
                 transfer_container.last_object = transfer.last_object
                 transfer_container.count_error = TransferContainer.count_error + transfer.count_error
@@ -400,21 +483,21 @@ class SynchronizeContainers():
                 ))
                 time.sleep(5)
 
-        status, msg = self.swift.set_account_meta_cloud_migration()
+        # status, msg = self.swift.set_account_meta_cloud_migration()
 
-        self.app.logger.info('========================================================')
-        self.app.logger.info("[{}] {} SET account_meta_cloud_migration 'AUTH_{}': {}".format(
-            transfer_object.project_name,
-            status,
-            project_id,
-            msg
-        ))
+        # self.app.logger.info('========================================================')
+        # self.app.logger.info("[{}] {} SET account_meta_cloud_migration 'AUTH_{}': {}".format(
+        #     transfer_object.project_name,
+        #     status,
+        #     self.project_id,
+        #     msg
+        # ))
 
-        if status != 204:
-            return Response(msg, mimetype="text/plain", status=status)
+        # if status != 204:
+        #     return Response(msg, mimetype="text/plain", status=status)
 
 
-    def _get_container(self, storage_client, account, container, transfer, transfer_object, objects):
+    def _get_container(self, storage_client, account, transfer, transfer_object, transfer_container, objects):
         ctx = self.app.app_context()
         ctx.push()
 
@@ -430,11 +513,11 @@ class SynchronizeContainers():
                 if not prefix:
                     self.app.logger.error("[{}] 500 PUT folder '{}/None': Prefix None".format(
                         transfer_object.project_name,
-                        container
+                        self.container_name
                     ))
                     continue
 
-                blob = bucket.blob('{}/{}'.format(container, prefix))
+                blob = bucket.blob('{}/{}'.format(self.container_name, prefix))
 
                 try:
                     blob.upload_from_string('',
@@ -442,23 +525,23 @@ class SynchronizeContainers():
                         num_retries=3,
                         timeout=30
                     )
-                    # self.app.logger.info("[{}] 201 PUT folder '{}/{}': Created".format(
-                    #     transfer_object.project_name,
-                    #     container,
-                    #     prefix
-                    # ))
+                    self.app.logger.info("[{}] 201 PUT folder '{}/{}': Created".format(
+                        transfer_object.project_name,
+                        self.container_name,
+                        prefix
+                    ))
                 except BadRequest:
                     transfer.count_error += 1
                     self.app.logger.error("[{}] 400 PUT folder '{}/{}': BadRequest".format(
                         transfer_object.project_name,
-                        container,
+                        self.container_name,
                         prefix
                     ))
                     while True:
                         try:
                             transfer_error = TransferContainerError(
-                                object_error="{}/{}".format(container, prefix),
-                                transfer_container_id=transfer_object.id,
+                                object_error="{}/{}".format(self.container_name, prefix),
+                                transfer_container_id=transfer_container.id,
                                 created=datetime.now()
                             )
                             transfer_error.save()
@@ -473,14 +556,14 @@ class SynchronizeContainers():
                     transfer.count_error += 1
                     self.app.logger.error("[{}] 504 PUT folder '{}/{}': ReadTimeout".format(
                         transfer_object.project_name,
-                        container,
+                        self.container_name,
                         prefix
                     ))
                     while True:
                         try:
                             transfer_error = TransferContainerError(
-                                object_error="{}/{}".format(container, prefix),
-                                transfer_container_id=transfer_object.id,
+                                object_error="{}/{}".format(self.container_name, prefix),
+                                transfer_container_id=transfer_container.id,
                                 created=datetime.now()
                             )
                             transfer_error.save()
@@ -495,15 +578,15 @@ class SynchronizeContainers():
                     transfer.count_error += 1
                     self.app.logger.error("[{}] 500 PUT folder '{}/{}': {}".format(
                         transfer_object.project_name,
-                        container,
+                        self.container_name,
                         prefix,
                         err
                     ))
                     while True:
                         try:
                             transfer_error = TransferContainerError(
-                                object_error="{}/{}".format(container, prefix),
-                                transfer_container_id=transfer_object.id,
+                                object_error="{}/{}".format(self.container_name, prefix),
+                                transfer_container_id=transfer_container.id,
                                 created=datetime.now()
                             )
                             transfer_error.save()
@@ -515,25 +598,25 @@ class SynchronizeContainers():
                             time.sleep(5)
                     continue
 
-                transfer.last_object = '{}/{}'.format(container, prefix)
+                transfer.last_object = '{}/{}'.format(self.container_name, prefix)
                 del blob
 
                 try:
-                    meta, objects = self.swift.get_container(container, prefix=prefix)
+                    meta, objects = self.swift.get_container(self.container_name, prefix=prefix)
                 except requests.exceptions.ConnectionError as err:
                     try:
                         self.conn = self.keystone.get_keystone_connection()
                         self.swift = Swift(self.conn, self.project_id)
-                        meta, objects = self.swift.get_container(container, prefix=prefix)
+                        meta, objects = self.swift.get_container(self.container_name, prefix=prefix)
                     except AuthorizationFailure:
                         self.app.logger.error("[{}] 500 Get container '{}': Keystone authorization failure".format(
                             transfer_object.project_name,
-                            container
+                            self.container_name
                         ))
                     except Exception as err:
                         self.app.logger.error("[{}] 500 Get container '{}/{}': {}".format(
                             transfer_object.project_name,
-                            container,
+                            self.container_name,
                             prefix,
                             err
                         ))
@@ -541,7 +624,7 @@ class SynchronizeContainers():
                 except Exception as err:
                     self.app.logger.error("[{}] 500 Get container '{}/{}': {}".format(
                         transfer_object.project_name,
-                        container,
+                        self.container_name,
                         prefix,
                         err
                     ))
@@ -551,32 +634,32 @@ class SynchronizeContainers():
                     self._get_container(
                         storage_client,
                         account,
-                        container,
                         transfer,
                         transfer_object,
+                        transfer_container,
                         objects
                     )
             else:
                 if obj.get('content_type') != 'application/directory':
                     try:
-                        headers, content = self.swift.get_object(container, obj.get('name'))
+                        headers, content = self.swift.get_object(self.container_name, obj.get('name'))
                     except requests.exceptions.ConnectionError:
                         try:
                             self.conn = self.keystone.get_keystone_connection()
                             self.swift = Swift(self.conn, self.project_id)
-                            headers, content = self.swift.get_object(container, obj.get('name'))
+                            headers, content = self.swift.get_object(self.container_name, obj.get('name'))
                         except IncompleteRead:
                             transfer.count_error += 1
                             self.app.logger.error("[{}] 500 Get object '{}/{}': Keystone authorization failure".format(
                                 transfer_object.project_name,
-                                container,
+                                self.container_name,
                                 obj.get('name')
                             ))
                             while True:
                                 try:
                                     transfer_error = TransferContainerError(
-                                        object_error="{}/{}".format(container, obj.get('name')),
-                                        transfer_container_id=transfer_object.id,
+                                        object_error="{}/{}".format(self.container_name, obj.get('name')),
+                                        transfer_container_id=transfer_container.id,
                                         created=datetime.now()
                                     )
                                     transfer_error.save()
@@ -591,14 +674,14 @@ class SynchronizeContainers():
                             transfer.count_error += 1
                             self.app.logger.error("[{}] 500 Get object '{}/{}': Keystone authorization failure".format(
                                 transfer_object.project_name,
-                                container,
+                                self.container_name,
                                 obj.get('name')
                             ))
                             while True:
                                 try:
                                     transfer_error = TransferContainerError(
-                                        object_error="{}/{}".format(container, obj.get('name')),
-                                        transfer_container_id=transfer_object.id,
+                                        object_error="{}/{}".format(self.container_name, obj.get('name')),
+                                        transfer_container_id=transfer_container.id,
                                         created=datetime.now()
                                     )
                                     transfer_error.save()
@@ -613,15 +696,15 @@ class SynchronizeContainers():
                             transfer.count_error += 1
                             self.app.logger.error("[{}] 500 Get object '{}/{}': {}".format(
                                 transfer_object.project_name,
-                                container,
+                                self.container_name,
                                 obj.get('name'),
                                 err
                             ))
                             while True:
                                 try:
                                     transfer_error = TransferContainerError(
-                                        object_error="{}/{}".format(container, obj.get('name')),
-                                        transfer_container_id=transfer_object.id,
+                                        object_error="{}/{}".format(self.container_name, obj.get('name')),
+                                        transfer_container_id=transfer_container.id,
                                         created=datetime.now()
                                     )
                                     transfer_error.save()
@@ -636,15 +719,15 @@ class SynchronizeContainers():
                         transfer.count_error += 1
                         self.app.logger.error("[{}] 500 Get object '{}/{}': {}".format(
                             transfer_object.project_name,
-                            container,
+                            self.container_name,
                             obj.get('name'),
                             err
                         ))
                         while True:
                             try:
                                 transfer_error = TransferContainerError(
-                                    object_error="{}/{}".format(container, obj.get('name')),
-                                    transfer_container_id=transfer_object.id,
+                                    object_error="{}/{}".format(self.container_name, obj.get('name')),
+                                    transfer_container_id=transfer_container.id,
                                     created=datetime.now()
                                 )
                                 transfer_error.save()
@@ -659,15 +742,15 @@ class SynchronizeContainers():
                         transfer.count_error += 1
                         self.app.logger.error("[{}] 500 Get object '{}/{}': {}".format(
                             transfer_object.project_name,
-                            container,
+                            self.container_name,
                             obj.get('name'),
                             err
                         ))
                         while True:
                             try:
                                 transfer_error = TransferContainerError(
-                                    object_error="{}/{}".format(container, obj.get('name')),
-                                    transfer_container_id=transfer_object.id,
+                                    object_error="{}/{}".format(self.container_name, obj.get('name')),
+                                    transfer_container_id=transfer_container.id,
                                     created=datetime.now()
                                 )
                                 transfer_error.save()
@@ -680,7 +763,7 @@ class SynchronizeContainers():
                         continue
 
                     try:
-                        obj_path = "{}/{}".format(container, obj.get('name'))
+                        obj_path = "{}/{}".format(self.container_name, obj.get('name'))
                         blob = bucket.blob(obj_path)
                         metadata = {}
 
@@ -720,12 +803,12 @@ class SynchronizeContainers():
                             num_retries=3,
                             timeout=900
                         )
-                        # self.app.logger.info("[{}] 201 PUT object '{}' {} {}: Created".format(
-                        #     transfer_object.project_name,
-                        #     obj_path,
-                        #     obj.get('content_type'),
-                        #     len(content)
-                        # ))
+                        self.app.logger.info("[{}] 201 PUT object '{}' {} {}: Created".format(
+                            transfer_object.project_name,
+                            obj_path,
+                            obj.get('content_type'),
+                            len(content)
+                        ))
                     except BadRequest:
                         transfer.count_error += 1
                         self.app.logger.error("[{}] 400 PUT object '{}' {}: BadRequest".format(
@@ -736,7 +819,7 @@ class SynchronizeContainers():
                             try:
                                 transfer_error = TransferContainerError(
                                     object_error=obj_path,
-                                    transfer_container_id=transfer_object.id,
+                                    transfer_container_id=transfer_container.id,
                                     created=datetime.now()
                                 )
                                 transfer_error.save()
@@ -757,7 +840,7 @@ class SynchronizeContainers():
                             try:
                                 transfer_error = TransferContainerError(
                                     object_error=obj_path,
-                                    transfer_container_id=transfer_object.id,
+                                    transfer_container_id=transfer_container.id,
                                     created=datetime.now()
                                 )
                                 transfer_error.save()
@@ -779,7 +862,7 @@ class SynchronizeContainers():
                             try:
                                 transfer_error = TransferContainerError(
                                     object_error=obj_path,
-                                    transfer_container_id=transfer_object.id,
+                                    transfer_container_id=transfer_container.id,
                                     created=datetime.now()
                                 )
                                 transfer_error.save()
@@ -796,4 +879,4 @@ class SynchronizeContainers():
 
                     transfer.object_count_gcp += 1
                     transfer.bytes_used_gcp += obj.get('bytes')
-                    transfer.last_object = '{}/{}'.format(container, obj.get('name'))
+                    transfer.last_object = '{}/{}'.format(self.container_name, obj.get('name'))

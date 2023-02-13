@@ -48,14 +48,14 @@ while True:
         limit=10000
     )
 
-    marker = objects[-1].get('name')
-    sql = "INSERT INTO `transfer_container_paginated` (`project_id`, `project_name`, `container_name`, `marker`, `hostname`, `environment`, `object_count_swift`, `bytes_used_swift`, `count_error`, `object_count_gcp`, `bytes_used_gcp`, `initial_date`, `final_date`) VALUES ('{}', '{}', '{}', '{}', NULL, 'pages2', 0, 0, 0, 0, 0, NULL, NULL);".format(project_id, project_name, container_name, marker)
+    if (len(objects) > 0):
+        marker = objects[-1].get('name')
+        sql = "INSERT INTO `transfer_container_paginated` (`project_id`, `project_name`, `container_name`, `marker`, `hostname`, `environment`, `object_count_swift`, `bytes_used_swift`, `count_error`, `object_count_gcp`, `bytes_used_gcp`, `initial_date`, `final_date`) VALUES ('{}', '{}', '{}', '{}', NULL, 'pages2', 0, 0, 0, 0, 0, NULL, NULL);".format(project_id, project_name, container_name, marker)
 
-    print(sql)
-    print('------------------')
-    query = db.session.execute(sql)
-
-    if (len(objects) <= 0):
+        print(sql)
+        print('------------------')
+        query = db.session.execute(sql)
+    else:
         break
 
 print('ok...')

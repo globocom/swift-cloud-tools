@@ -1,5 +1,5 @@
 # EXAMPLE
-# python scripts/container/create_container_gcp.py 643f797035bf416ba8001e95947622c0 internal_valor.globo.com
+# python scripts/pages/create_container_gcp.py 643f797035bf416ba8001e95947622c0 internal_valor.globo.com
 
 import sys
 

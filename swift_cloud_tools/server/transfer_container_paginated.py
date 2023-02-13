@@ -31,18 +31,19 @@ async def work():
     hostnames = {}
 
     while True:
-        app.logger.info('[SERVICE][TRANSFER_CONTAINER_PAGINATED] Transfer container task started')
+        app.logger.info('[SERVICE][TRANSFER_CONTAINER] Transfer container task started')
         env = os.environ.get("ENVIRONMENT")
         hostname = socket.gethostname()
 
         try:
             raws = TransferContainerPaginated.query.filter(
+                TransferContainerPaginated.hostname != None,
                 TransferContainerPaginated.environment == env,
                 TransferContainerPaginated.initial_date != None,
                 TransferContainerPaginated.final_date == None
             ).all()
         except Exception as err:
-            app.logger.info("[SERVICE][TRANSFER_CONTAINER_PAGINATED] 500 Query 'mysql': {}".format(err))
+            app.logger.info("[SERVICE][TRANSFER_CONTAINER] 500 Query 'mysql': {}".format(err))
             continue
 
         running = len(raws)
@@ -52,21 +53,24 @@ async def work():
 
         try:
             raws = TransferContainerPaginated.query.filter(
+                TransferContainerPaginated.hostname == None,
                 TransferContainerPaginated.environment == env,
                 TransferContainerPaginated.initial_date == None,
                 TransferContainerPaginated.final_date == None
             ).all()
         except Exception as err:
-            app.logger.info("[SERVICE][TRANSFER_CONTAINER_PAGINATED] 500 Query 'mysql': {}".format(err))
+            app.logger.info("[SERVICE][TRANSFER_CONTAINER] 500 Query 'mysql': {}".format(err))
             continue
 
         try:
             container_page_hostnames = db.session.query(
                 TransferContainerPaginated.hostname,
                 func.count(TransferContainerPaginated.hostname)
-            ).filter(TransferContainerPaginated.final_date=None)
-            .filter(TransferContainerPaginated.hostname!=None)
-            .group_by(TransferContainerPaginated.hostname).all()
+            ).filter(
+                TransferContainerPaginated.final_date == None
+            ).filter(
+                TransferContainerPaginated.hostname != None
+            ).group_by(TransferContainerPaginated.hostname).all()
         except Exception as err:
             app.logger.info("[SERVICE][TRANSFER] 500 Query 'mysql': {}".format(err))
             continue
@@ -79,32 +83,35 @@ async def work():
         if (diff == 0) or (hostname in hostnames):
             raws = []
 
-        app.logger.info('[SERVICE][TRANSFER_CONTAINER_PAGINATED] running: {}'.format(running))
-        app.logger.info('[SERVICE][TRANSFER_CONTAINER_PAGINATED] available: {}'.format(available))
-        app.logger.info('[SERVICE][TRANSFER_CONTAINER_PAGINATED] queue: {}'.format(len(raws)))
-        app.logger.info('[SERVICE][TRANSFER_CONTAINER_PAGINATED] threads: {}'.format(threads))
-        app.logger.info('[SERVICE][TRANSFER_CONTAINER_PAGINATED] hostname: {}'.format(hostname))
+        app.logger.info('[SERVICE][TRANSFER_CONTAINER] running: {}'.format(running))
+        app.logger.info('[SERVICE][TRANSFER_CONTAINER] available: {}'.format(available))
+        app.logger.info('[SERVICE][TRANSFER_CONTAINER] queue: {}'.format(len(raws)))
+        app.logger.info('[SERVICE][TRANSFER_CONTAINER] threads: {}'.format(threads))
+        app.logger.info('[SERVICE][TRANSFER_CONTAINER] hostname: {}'.format(hostname))
 
         threads_copy = copy.copy(threads)
 
         for key in threads_copy.keys():
             thread = threads_copy[key]
-            app.logger.info('[SERVICE][TRANSFER_CONTAINER_PAGINATED] name: {}, isAlive: {}'.format(thread.name, thread.isAlive()))
+            app.logger.info('[SERVICE][TRANSFER_CONTAINER] name: {}, isAlive: {}'.format(thread.name, thread.isAlive()))
             if not thread.isAlive():
                 del threads[key]
                 key = re.search("project_id=(.*);container_name=(.*);marker=(.*)", key)
-                project_id = key.group(0)
-                container_name = key.group(1)
-                marker = key.group(2)
+                project_id = key.group(1)
+                container_name = key.group(2)
+                marker = key.group(3)
+                marker = None if marker == 'None' else marker
                 del hostnames[hostname]
+
                 try:
                     transfer_container = TransferContainerPaginated.find_transfer_container(project_id, container_name, marker)
 
                     if transfer_container:
+                        transfer_container.hostname = None
                         transfer_container.final_date = datetime.now()
                         transfer_container.save()
                 except Exception as err:
-                    app.logger.info("[SERVICE][TRANSFER_CONTAINER_PAGINATED] 500 Save 'mysql': {}".format(err))
+                    app.logger.info("[SERVICE][TRANSFER_CONTAINER] 500 Save 'mysql': {}".format(err))
                     continue
 
         for raw in raws[:1]:
@@ -114,7 +121,7 @@ async def work():
                     raw.hostname = hostname
                     msg, status = raw.save()
                 except Exception as err:
-                    app.logger.info("[SERVICE][TRANSFER_CONTAINER_PAGINATED] 500 Save 'mysql': {}".format(err))
+                    app.logger.info("[SERVICE][TRANSFER_CONTAINER] 500 Save 'mysql': {}".format(err))
                     continue
 
                 sync = SynchronizeContainersPaginated(raw.project_id, raw.container_name, raw.marker, hostname)
@@ -123,11 +130,11 @@ async def work():
                 x.start()
                 threads[thread_name] = x
             except Exception as err:
-                app.logger.info("[SERVICE][TRANSFER_CONTAINER_PAGINATED] 500 Save 'mysql': {}".format(err))
+                app.logger.info("[SERVICE][TRANSFER_CONTAINER] 500 Save 'mysql': {}".format(err))
                 continue
 
-        app.logger.info('[SERVICE][TRANSFER_CONTAINER_PAGINATED] Transfer container task completed')
-        app.logger.info('[SERVICE][TRANSFER_CONTAINER_PAGINATED] Sending passive monitoring to zabbix')
+        app.logger.info('[SERVICE][TRANSFER_CONTAINER] Transfer container task completed')
+        app.logger.info('[SERVICE][TRANSFER_CONTAINER] Sending passive monitoring to zabbix')
         zabbix.send()
 
         await asyncio.sleep(transfer_time)
@@ -142,5 +149,5 @@ if __name__ == '__main__':
     except KeyboardInterrupt:
         pass
     finally:
-        log.info('[SERVICE][TRANSFER_CONTAINER_PAGINATED] Closing loop')
+        log.info('[SERVICE][TRANSFER_CONTAINER] Closing loop')
         loop.close()

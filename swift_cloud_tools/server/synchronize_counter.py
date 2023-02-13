@@ -79,6 +79,10 @@ class SynchronizeCounters():
                         blob.patch(timeout=60, retry=deadline)
                     except Conflict:
                         pass
+                    except NotFound:
+                        pass
+                    except Exception as err:
+                        self.app.logger.error('[COUNTER] blob.patch: {}'.format(err))
                     self.app.logger.info('[COUNTER] metadata after: {}'.format(metadata))
                 elif data == 'DELETE':
                     labels['object-count'] = object_count_label - counter
@@ -93,6 +97,10 @@ class SynchronizeCounters():
                         blob.patch(timeout=60, retry=deadline)
                     except Conflict:
                         pass
+                    except NotFound:
+                        pass
+                    except Exception as err:
+                        self.app.logger.error('[COUNTER] blob.patch: {}'.format(err))
                     self.app.logger.info('[COUNTER] metadata after: {}'.format(metadata))
 
             del blob
@@ -106,6 +114,10 @@ class SynchronizeCounters():
                 bucket.patch(timeout=60, retry=deadline)
             except Conflict:
                 pass
+            except NotFound:
+                pass
+            except Exception as err:
+                self.app.logger.error('[COUNTER] bucket.patch: {}'.format(err))
             self.app.logger.info('[COUNTER] labels after: {}'.format(labels))
         except RetryError:
             # nack
