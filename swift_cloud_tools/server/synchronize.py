@@ -1012,6 +1012,9 @@ class SynchronizeProjects():
                         if headers.get('content-disposition'):
                             blob.content_disposition = headers.get('content-disposition')
 
+                        if obj.get('last_modified'):
+                            metadata['last-modified'] = obj.get('last_modified') + '+00:00'
+
                         meta_keys = list(filter(
                             lambda x: 'x-object-meta' in x.lower(),
                             [*headers.keys()]
