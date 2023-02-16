@@ -37,19 +37,24 @@ for project in projetos:
     result = subprocess.run(['curl', '-s', '-I', f'https://api.s3.globoi.com/v1/AUTH_{project.id}', '-H', f'X-Auth-Token: {conn.auth_token}'], stdout=subprocess.PIPE)
     out = result.stdout.decode("utf-8").replace('\r\n', '|')[48:-4]
     outs = out.split('|')
+    small = True
 
-    sql = f"INSERT INTO transfer_project (`project_id`, `project_name`, `environment`, `container_count_swift`, `object_count_swift`, `bytes_used_swift`, `last_object`, `count_error`, `container_count_gcp`, `object_count_gcp`, `bytes_used_gcp`, `initial_date`, `final_date`) VALUES ('{project.id}', '{project.name}', '#env#', #container_count#, #object_count#, #bytes_used#, '', 0, 0, 0, 0, NULL, NULL);"
+    sql = f"INSERT INTO transfer_project (`project_id`, `project_name`, `environment`, `container_count_swift`, `object_count_swift`, `bytes_used_swift`, `last_object`, `count_error`, `container_count_gcp`, `object_count_gcp`, `bytes_used_gcp`, `initial_date`, `final_date`) VALUES ('{project.id}', '{project.name}', 'small2', #container_count#, #object_count#, #bytes_used#, '', 0, 0, 0, 0, NULL, NULL);"
 
     for out in outs:
         item = out.split(':')
         if item[0] == 'x-account-container-count':
             sql = sql.replace('#container_count#', item[1])
         elif item[0] == 'x-account-object-count':
-            if int(item[1]) < 487623:
-                sql = sql.replace('#env#', 'small2')
+            if int(item[1]) > 480000:
+                small = False
+                break
             sql = sql.replace('#object_count#', item[1])
         elif item[0] == 'x-account-bytes-used':
             sql = sql.replace('#bytes_used#', item[1])
+
+    if not small:
+        continue
 
     print(f"{bcolors.OKCYAN}'{project.name}'{bcolors.ENDC} - {bcolors.OKGREEN}ok{bcolors.ENDC}")
     query = db.session.execute(sql)
