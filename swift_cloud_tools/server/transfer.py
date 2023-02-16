@@ -32,7 +32,6 @@ async def work():
     while True:
         app.logger.info('[SERVICE][TRANSFER] Transfer task started')
         env = os.environ.get("ENVIRONMENT")
-        workers = int(os.environ.get("WORKERS", 10))
         hostname = socket.gethostname()
 
         try:
@@ -46,7 +45,7 @@ async def work():
             continue
 
         running = len(raws)
-        available = workers - running
+        available = number_of_units - running
 
         time.sleep(int(uniform(5, 15)))
 
