@@ -1,5 +1,5 @@
 # EXAMPLE
-# python scripts/pages/3_containers_totalizer.py 643f797035bf416ba8001e95947622c0 show_failover False production
+# python scripts/pages/3_containers_totalizer.py 643f797035bf416ba8001e95947622c0 show_failover production
 
 import time
 import sys
@@ -27,8 +27,7 @@ class bcolors:
 params = sys.argv[1:]
 project_id = params[0]
 project_name = params[1]
-applying = eval(params[2])
-environment = params[3]
+environment = params[2]
 
 app = create_app(f"config/{environment}_config.py")
 ctx = app.app_context()
@@ -55,6 +54,9 @@ account_stat, containers = swift_client.get_account(
     http_conn=http_conn,
     headers=headers
 )
+
+container_count_dccm = len(containers)
+container_count_gcp = 0
 
 try:
     bucket = storage_client.get_bucket(
@@ -101,43 +103,10 @@ for container in containers:
     finished = True if row.get('finished') == 0 else False
 
     if finished:
-        if applying:
-            count = 0
-            while True:
-                try:
-                    if count == 0:
-                        db.session.begin()
-                    transfer_project = db.session.query(TransferProject).filter_by(project_id=project_id).first()
-                    transfer_project.container_count_gcp = TransferProject.container_count_gcp + 1
-                    time.sleep(0.1)
-                    db.session.commit()
-                    break
-                except Exception as e:
-                    print(f"{bcolors.FAIL}{bcolors.BOLD}Problemas ao salvar os dados no mysql{bcolors.BOLD}{bcolors.ENDC}")
-                    time.sleep(5)
-                    count += 1
-
-            while True:
-                try:
-                    labels = bucket.labels
-                    container_count = int(labels.get('container-count', 0))
-                    labels['container-count'] = container_count + 1
-                    bucket.labels = labels
-                    time.sleep(0.1)
-                    deadline = Retry(deadline=60)
-                    bucket.patch(timeout=10, retry=deadline)
-                    break
-                except Conflict:
-                    print(f"{bcolors.FAIL}{bcolors.BOLD}Problemas ao salvar os dados no bucket{bcolors.BOLD}{bcolors.ENDC}")
-                    print(f"{bcolors.WARNING}{bcolors.BOLD}Nova tentativa em 5 segundos...{bcolors.BOLD}{bcolors.ENDC}")
-                    time.sleep(5)
-                except Exception as e:
-                    print(f"{bcolors.FAIL}{bcolors.BOLD}Problemas ao salvar os dados no bucket{bcolors.BOLD}{bcolors.ENDC}: {e}")
-                    print(f"{bcolors.WARNING}{bcolors.BOLD}Nova tentativa em 5 segundos...{bcolors.BOLD}{bcolors.ENDC}")
-                    time.sleep(5)
-
+        container_count_gcp += 1
         print(f"{bcolors.OKGREEN}'{container_name}'{bcolors.ENDC} - {bcolors.OKGREEN}{bcolors.BOLD}ok{bcolors.BOLD}{bcolors.ENDC} - {bcolors.OKCYAN}finalizado{bcolors.ENDC}")
     else:
         print(f"{bcolors.WARNING}'{container_name}'{bcolors.ENDC} - {bcolors.WARNING}{bcolors.BOLD}nok{bcolors.BOLD}{bcolors.ENDC} - {bcolors.OKCYAN}em migração{bcolors.ENDC}")
 
+print(f"{bcolors.WARNING}FInalizados {container_count_gcp} de {container_count_dccm}{bcolors.ENDC}")
 print(f"{bcolors.OKGREEN}ok...{bcolors.ENDC}")
