@@ -213,8 +213,6 @@ class SynchronizeContainersPaginated():
             marker
         ))
 
-        time.sleep(int(uniform(1, 10)) + int(uniform(3, 10)) + int(uniform(6, 10)))
-
         object_count_gcp = 0
         bytes_used_gcp = 0
 
@@ -244,6 +242,8 @@ class SynchronizeContainersPaginated():
         #############################################
         #      folder structure normalization       #
         #############################################
+
+        time.sleep(int(uniform(1, 4)) + int(uniform(2, 4)) + int(uniform(3, 4)))
 
         count = 0
         while True:
@@ -289,6 +289,8 @@ class SynchronizeContainersPaginated():
                 time.sleep(5)
                 count += 1
 
+        time.sleep(int(uniform(1, 7)) + int(uniform(3, 7)) + int(uniform(6, 7)))
+
         while True:
             try:
                 bucket_flush = storage_client.get_bucket(
@@ -310,6 +312,8 @@ class SynchronizeContainersPaginated():
                     err
                 ))
                 time.sleep(5)
+
+        time.sleep(int(uniform(1, 7)) + int(uniform(3, 7)) + int(uniform(6, 7)))
 
         while True:
             try:
