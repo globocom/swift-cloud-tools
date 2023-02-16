@@ -1,5 +1,5 @@
 # EXAMPLE
-# python scripts/pages/1_create_container_gcp.py 643f797035bf416ba8001e95947622c0 production
+# python scripts/pages/1_create_container_gcp.py 643f797035bf416ba8001e95947622c0 False production
 
 import sys
 
@@ -24,7 +24,8 @@ class bcolors:
 
 params = sys.argv[1:]
 project_id = params[0]
-environment = params[1]
+applying = eval(params[1])
+environment = params[2]
 
 app = create_app(f"config/{environment}_config.py")
 ctx = app.app_context()
@@ -53,33 +54,16 @@ account_stat, containers = swift_client.get_account(
     headers=headers
 )
 
-for container in containers:
-    container_name = container.get('name')
+container_count_dccm = len(containers)
+container_count_gcp = 0
 
-    if not container_name:
-        continue
-
-    print(f"{bcolors.OKCYAN}Criando container '{container_name}'{bcolors.ENDC} - {bcolors.OKGREEN}{bcolors.BOLD}ok{bcolors.BOLD}{bcolors.ENDC}")
-
-    meta, objects = swift_client.get_container(
-        url, 
-        conn.auth_token, 
-        container_name, 
-        delimiter=None, 
-        prefix=None, 
-        marker=marker, 
-        full_listing=False, 
-        http_conn=http_conn, 
-        headers=headers, 
-        limit=1
+try:
+    bucket = storage_client.get_bucket(
+        account,
+        timeout=30
     )
-
-    try:
-        bucket = storage_client.get_bucket(
-            account,
-            timeout=30
-        )
-    except NotFound:
+except NotFound:
+    if applying:
         try:
             bucket = storage_client.create_bucket(
                 account,
@@ -97,6 +81,28 @@ for container in containers:
             bucket.patch(timeout=10, retry=deadline)
         except Conflict:
             pass
+    else:
+        print(f"{bcolors.FAIL}Bucket não encontrado - '{account}'{bcolors.ENDC}")
+        sys.exit()
+
+for container in containers:
+    container_name = container.get('name')
+
+    if not container_name:
+        continue
+
+    meta, objects = swift_client.get_container(
+        url,
+        conn.auth_token,
+        container_name,
+        delimiter=None,
+        prefix=None,
+        marker=marker,
+        full_listing=False,
+        http_conn=http_conn,
+        headers=headers,
+        limit=1
+    )
 
     blob = bucket.blob(container_name + '/')
     metadata = {}
@@ -129,10 +135,50 @@ for container in containers:
 
     blob.metadata = metadata
 
-    blob.upload_from_string('',
-        content_type='application/directory',
-        num_retries=3,
-        timeout=30
-    )
+    if applying:
+        blob.upload_from_string('',
+            content_type='application/directory',
+            num_retries=3,
+            timeout=30
+        )
+    container_count_gcp += 1
 
+    print(f"{bcolors.OKCYAN}Criando container '{container_name}'{bcolors.ENDC} - {bcolors.OKGREEN}{bcolors.BOLD}ok{bcolors.BOLD}{bcolors.ENDC} - {container_count_gcp}")
+
+if applying:
+    count = 0
+    while True:
+        try:
+            if count == 0:
+                db.session.begin()
+            transfer_project = db.session.query(TransferProject).filter_by(project_id=project_id).first()
+            transfer_project.container_count_gcp = TransferProject.container_count_gcp + container_count_gcp
+            time.sleep(0.1)
+            db.session.commit()
+            break
+        except Exception as e:
+            print(f"{bcolors.FAIL}{bcolors.BOLD}Problemas ao salvar os dados no mysql{bcolors.BOLD}{bcolors.ENDC}")
+            time.sleep(5)
+            count += 1
+
+    while True:
+        try:
+            labels = bucket.labels
+            container_count = int(labels.get('container-count', 0))
+            labels['container-count'] = container_count + container_count_gcp
+            bucket.labels = labels
+            time.sleep(0.1)
+            deadline = Retry(deadline=60)
+            bucket.patch(timeout=10, retry=deadline)
+            break
+        except Conflict:
+            print(f"{bcolors.FAIL}{bcolors.BOLD}Problemas ao salvar os dados no bucket{bcolors.BOLD}{bcolors.ENDC}")
+            print(f"{bcolors.WARNING}{bcolors.BOLD}Nova tentativa em 5 segundos...{bcolors.BOLD}{bcolors.ENDC}")
+            time.sleep(5)
+        except Exception as e:
+            print(f"{bcolors.FAIL}{bcolors.BOLD}Problemas ao salvar os dados no bucket{bcolors.BOLD}{bcolors.ENDC}: {e}")
+            print(f"{bcolors.WARNING}{bcolors.BOLD}Nova tentativa em 5 segundos...{bcolors.BOLD}{bcolors.ENDC}")
+            time.sleep(5)
+
+print(f"{bcolors.WARNING}Criados {container_count_gcp} de {container_count_dccm}{bcolors.ENDC}")
 print(f"{bcolors.OKGREEN}ok...{bcolors.ENDC}")
