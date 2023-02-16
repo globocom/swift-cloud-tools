@@ -1,5 +1,5 @@
 # EXAMPLE
-# python scripts/pages/create_marker_db.py 643f797035bf416ba8001e95947622c0 show_failover production
+# python scripts/pages/2_create_marker_db.py 643f797035bf416ba8001e95947622c0 show_failover production
 
 import sys
 

@@ -1,5 +1,5 @@
 # EXAMPLE
-# python scripts/pages/create_container_gcp.py 643f797035bf416ba8001e95947622c0 internal_valor.globo.com production
+# python scripts/pages/1_create_container_gcp.py 643f797035bf416ba8001e95947622c0 production
 
 import sys
 
@@ -24,8 +24,7 @@ class bcolors:
 
 params = sys.argv[1:]
 project_id = params[0]
-container_name = params[1]
-environment = params[2]
+environment = params[1]
 
 app = create_app(f"config/{environment}_config.py")
 ctx = app.app_context()
@@ -44,80 +43,96 @@ marker = None
 
 http_conn = swift_client.http_connection(url, insecure=False, timeout=3600)
 
-meta, objects = swift_client.get_container(
-    url, 
-    conn.auth_token, 
-    container_name, 
-    delimiter=None, 
-    prefix=None, 
-    marker=marker, 
-    full_listing=False, 
-    http_conn=http_conn, 
-    headers=headers, 
-    limit=1
+account_stat, containers = swift_client.get_account(
+    url,
+    conn.auth_token,
+    marker=None,
+    end_marker=None,
+    full_listing=True,
+    http_conn=http_conn,
+    headers=headers
 )
 
-try:
-    bucket = storage_client.get_bucket(
-        account,
+for container in containers:
+    container_name = container.get('name')
+
+    if not container_name:
+        continue
+
+    print(f"{bcolors.OKCYAN}Criando container '{container_name}'{bcolors.ENDC} - {bcolors.OKGREEN}{bcolors.BOLD}ok{bcolors.BOLD}{bcolors.ENDC}")
+
+    meta, objects = swift_client.get_container(
+        url, 
+        conn.auth_token, 
+        container_name, 
+        delimiter=None, 
+        prefix=None, 
+        marker=marker, 
+        full_listing=False, 
+        http_conn=http_conn, 
+        headers=headers, 
+        limit=1
+    )
+
+    try:
+        bucket = storage_client.get_bucket(
+            account,
+            timeout=30
+        )
+    except NotFound:
+        try:
+            bucket = storage_client.create_bucket(
+                account,
+                location=bucket_location
+            )
+
+            labels = bucket.labels
+            labels['account-meta-cloud'] = 'gcp'
+            labels['container-count'] = 0
+            labels['object-count'] = 0
+            labels['bytes-used'] = 0
+            bucket.labels = labels
+
+            deadline = Retry(deadline=60)
+            bucket.patch(timeout=10, retry=deadline)
+        except Conflict:
+            pass
+
+    blob = bucket.blob(container_name + '/')
+    metadata = {}
+
+    metadata['object-count'] = meta.get('x-container-object-count', 0)
+    metadata['bytes-used'] = meta.get('x-container-bytes-used', 0)
+
+    for item in meta.items():
+        key, value = item
+        key = key.lower()
+        prefix = key.split('x-container-meta-')
+
+        if len(prefix) > 1:
+            meta_key = f'meta-{prefix[1].lower()}'
+            metadata[meta_key] = item[1].lower()
+            continue
+
+        if key == 'x-container-read':
+            metadata["read"] = value
+            continue
+
+        if key == 'x-versions-location' or key == 'x-history-location':
+            metadata["x-versions-location"] = value
+            continue
+
+        if key == 'x-undelete-enabled':
+            metadata["x-container-sysmeta-undelete-enabled"] = value
+            metadata["x-undelete-enabled"] = value
+            continue
+
+    blob.metadata = metadata
+
+    blob.upload_from_string('',
+        content_type='application/directory',
+        num_retries=3,
         timeout=30
     )
-except NotFound:
-    try:
-        bucket = storage_client.create_bucket(
-            account,
-            location=bucket_location
-        )
-
-        labels = bucket.labels
-        labels['account-meta-cloud'] = 'gcp'
-        labels['container-count'] = 0
-        labels['object-count'] = 0
-        labels['bytes-used'] = 0
-        bucket.labels = labels
-
-        deadline = Retry(deadline=60)
-        bucket.patch(timeout=10, retry=deadline)
-    except Conflict:
-        pass
-
-blob = bucket.blob(container_name + '/')
-metadata = {}
-
-metadata['object-count'] = meta.get('x-container-object-count', 0)
-metadata['bytes-used'] = meta.get('x-container-bytes-used', 0)
-
-for item in meta.items():
-    key, value = item
-    key = key.lower()
-    prefix = key.split('x-container-meta-')
-
-    print(f"{bcolors.OKCYAN}'{key}': '{value}'{bcolors.ENDC}")
-
-    if len(prefix) > 1:
-        meta_key = f'meta-{prefix[1].lower()}'
-        metadata[meta_key] = item[1].lower()
-        continue
-
-    if key == 'x-container-read':
-        metadata["read"] = value
-        continue
-
-    if key == 'x-versions-location' or key == 'x-history-location':
-        metadata["x-versions-location"] = value
-        continue
-
-    if key == 'x-undelete-enabled':
-        metadata["x-container-sysmeta-undelete-enabled"] = value
-        metadata["x-undelete-enabled"] = value
-        continue
-
-blob.metadata = metadata
-
-blob.upload_from_string('',
-    content_type='application/directory',
-    num_retries=3,
-    timeout=30
-)
 
 print(f"{bcolors.OKGREEN}ok...{bcolors.ENDC}")
