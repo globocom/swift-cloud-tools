@@ -1,5 +1,5 @@
 # EXAMPLE
-# python scripts/pages/create_container_gcp.py 643f797035bf416ba8001e95947622c0 internal_valor.globo.com
+# python scripts/pages/create_container_gcp.py 643f797035bf416ba8001e95947622c0 internal_valor.globo.com production
 
 import sys
 
@@ -11,7 +11,23 @@ from google.api_core.exceptions import NotFound, Conflict
 from google.api_core.retry import Retry
 
 
-app = create_app('config/production_config.py')
+class bcolors:
+    HEADER = '\033[95m'
+    OKBLUE = '\033[94m'
+    OKCYAN = '\033[96m'
+    OKGREEN = '\033[92m'
+    WARNING = '\033[93m'
+    FAIL = '\033[91m'
+    ENDC = '\033[0m'
+    BOLD = '\033[1m'
+    UNDERLINE = '\033[4m'
+
+params = sys.argv[1:]
+project_id = params[0]
+container_name = params[1]
+environment = params[2]
+
+app = create_app(f"config/{environment}_config.py")
 ctx = app.app_context()
 ctx.push()
 
@@ -19,14 +35,10 @@ google = Google()
 keystone = Keystone()
 conn = keystone.get_keystone_connection()
 storage_client = google.get_storage_client()
-params = sys.argv[1:]
 
-project_id = params[0]
-container_name = params[1]
-
-url = 'https://api.s3.globoi.com/v1/AUTH_{}'.format(project_id)
+url = f"https://api.s3.globoi.com/v1/AUTH_{project_id}"
 headers = {'X-Cloud-Bypass': '136f8e168edb41afbbad3da60d048c64'}
-account = 'auth_{}'.format(project_id)
+account = f"auth_{project_id}"
 bucket_location = 'SOUTHAMERICA-EAST1'
 marker = None
 
@@ -80,10 +92,10 @@ for item in meta.items():
     key = key.lower()
     prefix = key.split('x-container-meta-')
 
-    print(key +' - '+ value)
+    print(f"{bcolors.OKCYAN}'{key}': '{value}'{bcolors.ENDC}")
 
     if len(prefix) > 1:
-        meta_key = 'meta-{}'.format(prefix[1].lower())
+        meta_key = f'meta-{prefix[1].lower()}'
         metadata[meta_key] = item[1].lower()
         continue
 
@@ -108,4 +120,4 @@ blob.upload_from_string('',
     timeout=30
 )
 
-print('ok...')
+print(f"{bcolors.OKGREEN}ok...{bcolors.ENDC}")

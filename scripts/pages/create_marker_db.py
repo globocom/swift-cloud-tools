@@ -1,5 +1,5 @@
 # EXAMPLE
-# python scripts/pages/create_marker_db.py 643f797035bf416ba8001e95947622c0 show_failover internal_valor.globo.com
+# python scripts/pages/create_marker_db.py 643f797035bf416ba8001e95947622c0 show_failover production
 
 import sys
 
@@ -10,52 +10,78 @@ from swift_cloud_tools import create_app
 from swiftclient import client as swift_client
 
 
-app = create_app('config/production_config.py')
+class bcolors:
+    HEADER = '\033[95m'
+    OKBLUE = '\033[94m'
+    OKCYAN = '\033[96m'
+    OKGREEN = '\033[92m'
+    WARNING = '\033[93m'
+    FAIL = '\033[91m'
+    ENDC = '\033[0m'
+    BOLD = '\033[1m'
+    UNDERLINE = '\033[4m'
+
+params = sys.argv[1:]
+project_id = params[0]
+project_name = params[1]
+environment = params[2]
+
+app = create_app(f"config/{environment}_config.py")
 ctx = app.app_context()
 ctx.push()
 
 keystone = Keystone()
 conn = keystone.get_keystone_connection()
-params = sys.argv[1:]
 
-project_id = params[0]
-project_name = params[1]
-container_name = params[2]
-
-url = 'https://api.s3.globoi.com/v1/AUTH_{}'.format(project_id)
+url = f"https://api.s3.globoi.com/v1/AUTH_{project_id}"
 headers = {'X-Cloud-Bypass': '136f8e168edb41afbbad3da60d048c64'}
 marker = None
 
 http_conn = swift_client.http_connection(url, insecure=False, timeout=3600)
 
-sql = "INSERT INTO `transfer_container_paginated` (`project_id`, `project_name`, `container_name`, `marker`, `hostname`, `environment`, `object_count_swift`, `bytes_used_swift`, `count_error`, `object_count_gcp`, `bytes_used_gcp`, `initial_date`, `final_date`) VALUES ('{}', '{}', '{}', NULL, NULL, 'pages2', 0, 0, 0, 0, 0, NULL, NULL);".format(project_id, project_name, container_name)
+account_stat, containers = swift_client.get_account(
+    url,
+    conn.auth_token,
+    marker=None,
+    end_marker=None,
+    full_listing=True,
+    http_conn=http_conn,
+    headers=headers
+)
 
-print(sql)
-print('-----------')
-query = db.session.execute(sql)
+for container in containers:
+    container_name = container.get('name')
+    marker = None
 
-while True:
-    meta, objects = swift_client.get_container(
-        url, 
-        conn.auth_token, 
-        container_name, 
-        delimiter=None, 
-        prefix=None, 
-        marker=marker, 
-        full_listing=False, 
-        http_conn=http_conn, 
-        headers=headers, 
-        limit=10000
-    )
+    if not container_name:
+        continue
 
-    if (len(objects) > 0):
-        marker = objects[-1].get('name')
-        sql = "INSERT INTO `transfer_container_paginated` (`project_id`, `project_name`, `container_name`, `marker`, `hostname`, `environment`, `object_count_swift`, `bytes_used_swift`, `count_error`, `object_count_gcp`, `bytes_used_gcp`, `initial_date`, `final_date`) VALUES ('{}', '{}', '{}', '{}', NULL, 'pages2', 0, 0, 0, 0, 0, NULL, NULL);".format(project_id, project_name, container_name, marker)
+    sql = f"INSERT INTO `transfer_container_paginated` (`project_id`, `project_name`, `container_name`, `marker`, `hostname`, `environment`, `object_count_swift`, `bytes_used_swift`, `count_error`, `object_count_gcp`, `bytes_used_gcp`, `initial_date`, `final_date`) VALUES ('{project_id}', '{project_name}', '{container_name}', NULL, NULL, 'pages2', 0, 0, 0, 0, 0, NULL, NULL);"
 
-        print(sql)
-        print('------------------')
-        query = db.session.execute(sql)
-    else:
-        break
+    print(f"{bcolors.OKGREEN}'{project_name}' - '{container_name}'{bcolors.ENDC} - {bcolors.OKCYAN}''{bcolors.ENDC}")
+    query = db.session.execute(sql)
 
-print('ok...')
+    while True:
+        meta, objects = swift_client.get_container(
+            url, 
+            conn.auth_token, 
+            container_name, 
+            delimiter=None,
+            prefix=None,
+            marker=marker, 
+            full_listing=False,
+            http_conn=http_conn, 
+            headers=headers, 
+            limit=10000
+        )
+
+        if (len(objects) > 0):
+            marker = objects[-1].get('name')
+            sql = f"INSERT INTO `transfer_container_paginated` (`project_id`, `project_name`, `container_name`, `marker`, `hostname`, `environment`, `object_count_swift`, `bytes_used_swift`, `count_error`, `object_count_gcp`, `bytes_used_gcp`, `initial_date`, `final_date`) VALUES ('{project_id}', '{project_name}', '{container_name}', '{marker}', NULL, 'pages2', 0, 0, 0, 0, 0, NULL, NULL);"
+
+            print(f"{bcolors.OKGREEN}'{project_name}' - '{container_name}'{bcolors.ENDC} - {bcolors.OKCYAN}'{marker}'{bcolors.ENDC}")
+            query = db.session.execute(sql)
+        else:
+            break
+
+print(f"{bcolors.OKGREEN}ok...{bcolors.ENDC}")
