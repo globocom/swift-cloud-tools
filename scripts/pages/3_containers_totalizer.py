@@ -1,16 +1,14 @@
 # EXAMPLE
 # python scripts/pages/3_containers_totalizer.py 643f797035bf416ba8001e95947622c0 show_failover production
 
-import time
 import sys
 
-from swift_cloud_tools.models import TransferProject, db
+from swift_cloud_tools.models import db
 from swift_cloud_tools.server.utils import Keystone, Google
 from swift_cloud_tools import create_app
 
 from swiftclient import client as swift_client
-from google.api_core.exceptions import NotFound, Conflict
-from google.api_core.retry import Retry
+from google.api_core.exceptions import NotFound
 
 
 class bcolors:

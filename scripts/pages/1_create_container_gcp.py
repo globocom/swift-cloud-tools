@@ -1,8 +1,10 @@
 # EXAMPLE
-# python scripts/pages/1_create_container_gcp.py 643f797035bf416ba8001e95947622c0 False production
+# python scripts/pages/1_create_container_gcp.py 643f797035bf416ba8001e95947622c0 show_failover False production
 
+import time
 import sys
 
+from swift_cloud_tools.models import TransferProject, db
 from swift_cloud_tools.server.utils import Keystone, Google
 from swift_cloud_tools import create_app
 
@@ -24,8 +26,9 @@ class bcolors:
 
 params = sys.argv[1:]
 project_id = params[0]
-applying = eval(params[1])
-environment = params[2]
+project_name = params[1]
+applying = eval(params[2])
+environment = params[3]
 
 app = create_app(f"config/{environment}_config.py")
 ctx = app.app_context()
@@ -40,6 +43,7 @@ url = f"https://api.s3.globoi.com/v1/AUTH_{project_id}"
 headers = {'X-Cloud-Bypass': '136f8e168edb41afbbad3da60d048c64'}
 account = f"auth_{project_id}"
 bucket_location = 'SOUTHAMERICA-EAST1'
+container_count_gcp = 0
 marker = None
 
 http_conn = swift_client.http_connection(url, insecure=False, timeout=3600)
@@ -54,8 +58,12 @@ account_stat, containers = swift_client.get_account(
     headers=headers
 )
 
-container_count_dccm = len(containers)
-container_count_gcp = 0
+container_count_dccm = int(account_stat.get('x-account-container-count'))
+object_count_dccm = int(account_stat.get('x-account-object-count'))
+bytes_used_dccm = int(account_stat.get('x-account-bytes-used'))
+
+sql = f"INSERT INTO `transfer_project` (`project_id`, `project_name`, `environment`, `container_count_swift`, `object_count_swift`, `bytes_used_swift`, `last_object`, `count_error`, `container_count_gcp`, `object_count_gcp`, `bytes_used_gcp`, `initial_date`, `final_date`) VALUES ('{project_id}', '{project_name}', 'pages2', {container_count_dccm}, {object_count_dccm}, {bytes_used_dccm}, '', 0, 0, 0, 0, NULL, NULL);"
+query = db.session.execute(sql)
 
 try:
     bucket = storage_client.get_bucket(
@@ -157,7 +165,7 @@ if applying:
             db.session.commit()
             break
         except Exception as e:
-            print(f"{bcolors.FAIL}{bcolors.BOLD}Problemas ao salvar os dados no mysql{bcolors.BOLD}{bcolors.ENDC}")
+            print(f"{bcolors.FAIL}{bcolors.BOLD}Problemas ao salvar os dados no mysql{bcolors.BOLD}{bcolors.ENDC}: {e}")
             time.sleep(5)
             count += 1
 
