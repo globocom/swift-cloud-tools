@@ -1,5 +1,5 @@
 # EXAMPLE
-# python scripts/pages/2_create_marker_db.py 643f797035bf416ba8001e95947622c0 show_failover production
+# python scripts/pages/2_create_marker_db.py 643f797035bf416ba8001e95947622c0 show_failover False production
 
 import sys
 
@@ -24,7 +24,8 @@ class bcolors:
 params = sys.argv[1:]
 project_id = params[0]
 project_name = params[1]
-environment = params[2]
+applying = eval(params[2])
+environment = params[3]
 
 app = create_app(f"config/{environment}_config.py")
 ctx = app.app_context()
@@ -59,7 +60,8 @@ for container in containers:
     sql = f"INSERT INTO `transfer_container_paginated` (`project_id`, `project_name`, `container_name`, `marker`, `hostname`, `environment`, `object_count_swift`, `bytes_used_swift`, `count_error`, `object_count_gcp`, `bytes_used_gcp`, `initial_date`, `final_date`) VALUES ('{project_id}', '{project_name}', '{container_name}', NULL, NULL, 'pages2', 0, 0, 0, 0, 0, NULL, NULL);"
 
     print(f"{bcolors.OKGREEN}'{project_name}' - '{container_name}'{bcolors.ENDC} - {bcolors.OKCYAN}''{bcolors.ENDC}")
-    query = db.session.execute(sql)
+    if applying:
+        query = db.session.execute(sql)
 
     while True:
         meta, objects = swift_client.get_container(
@@ -80,7 +82,8 @@ for container in containers:
             sql = f"INSERT INTO `transfer_container_paginated` (`project_id`, `project_name`, `container_name`, `marker`, `hostname`, `environment`, `object_count_swift`, `bytes_used_swift`, `count_error`, `object_count_gcp`, `bytes_used_gcp`, `initial_date`, `final_date`) VALUES ('{project_id}', '{project_name}', '{container_name}', '{marker}', NULL, 'pages2', 0, 0, 0, 0, 0, NULL, NULL);"
 
             print(f"{bcolors.OKGREEN}'{project_name}' - '{container_name}'{bcolors.ENDC} - {bcolors.OKCYAN}'{marker}'{bcolors.ENDC}")
-            query = db.session.execute(sql)
+            if applying:
+                query = db.session.execute(sql)
         else:
             break
 
