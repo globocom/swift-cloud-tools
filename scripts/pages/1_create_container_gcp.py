@@ -153,40 +153,5 @@ for container in containers:
 
     print(f"{bcolors.OKCYAN}Criando container '{container_name}'{bcolors.ENDC} - {bcolors.OKGREEN}{bcolors.BOLD}ok{bcolors.BOLD}{bcolors.ENDC} - {container_count_gcp}")
 
-if applying:
-    count = 0
-    while True:
-        try:
-            if count == 0:
-                db.session.begin()
-            transfer_project = db.session.query(TransferProject).filter_by(project_id=project_id).first()
-            transfer_project.container_count_gcp = TransferProject.container_count_gcp + container_count_gcp
-            time.sleep(0.1)
-            db.session.commit()
-            break
-        except Exception as e:
-            print(f"{bcolors.FAIL}{bcolors.BOLD}Problemas ao salvar os dados no mysql{bcolors.BOLD}{bcolors.ENDC}: {e}")
-            time.sleep(5)
-            count += 1
-
-    while True:
-        try:
-            labels = bucket.labels
-            container_count = int(labels.get('container-count', 0))
-            labels['container-count'] = container_count + container_count_gcp
-            bucket.labels = labels
-            time.sleep(0.1)
-            deadline = Retry(deadline=60)
-            bucket.patch(timeout=10, retry=deadline)
-            break
-        except Conflict:
-            print(f"{bcolors.FAIL}{bcolors.BOLD}Problemas ao salvar os dados no bucket{bcolors.BOLD}{bcolors.ENDC}")
-            print(f"{bcolors.WARNING}{bcolors.BOLD}Nova tentativa em 5 segundos...{bcolors.BOLD}{bcolors.ENDC}")
-            time.sleep(5)
-        except Exception as e:
-            print(f"{bcolors.FAIL}{bcolors.BOLD}Problemas ao salvar os dados no bucket{bcolors.BOLD}{bcolors.ENDC}: {e}")
-            print(f"{bcolors.WARNING}{bcolors.BOLD}Nova tentativa em 5 segundos...{bcolors.BOLD}{bcolors.ENDC}")
-            time.sleep(5)
-
 print(f"{bcolors.WARNING}Criados {container_count_gcp} de {container_count_dccm}{bcolors.ENDC}")
 print(f"{bcolors.OKGREEN}ok...{bcolors.ENDC}")
