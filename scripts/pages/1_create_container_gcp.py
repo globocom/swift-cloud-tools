@@ -80,9 +80,9 @@ except NotFound:
 
             labels = bucket.labels
             labels['account-meta-cloud'] = 'gcp'
-            labels['container-count'] = 0
-            labels['object-count'] = 0
-            labels['bytes-used'] = 0
+            labels['container-count'] = container_count_dccm
+            labels['object-count'] = object_count_dccm
+            labels['bytes-used'] = bytes_used_dccm
             bucket.labels = labels
 
             deadline = Retry(deadline=60)
@@ -114,6 +114,9 @@ for container in containers:
 
     blob = bucket.blob(container_name + '/')
     metadata = {}
+
+    metadata['object-count'] = meta.get('x-container-object-count', 0)
+    metadata['bytes-used'] = meta.get('x-container-bytes-used', 0)
 
     for item in meta.items():
         key, value = item
