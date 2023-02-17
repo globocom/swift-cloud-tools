@@ -1,6 +1,8 @@
 # EXAMPLE
 # python scripts/pages/3_containers_totalizer.py 643f797035bf416ba8001e95947622c0 show_failover production
 
+import time
+import json
 import sys
 
 from swift_cloud_tools.models import db
@@ -39,9 +41,46 @@ storage_client = google.get_storage_client()
 url = f"https://api.s3.globoi.com/v1/AUTH_{project_id}"
 headers = {'X-Cloud-Bypass': '136f8e168edb41afbbad3da60d048c64'}
 account = f"auth_{project_id}"
+json_path = f"vault/{project_id}.json"
 marker = None
 
 http_conn = swift_client.http_connection(url, insecure=False, timeout=3600)
+
+try:
+    bucket = storage_client.get_bucket(
+        'auth_f063e2edb7914e6aa123fd70a1f19df2',
+        timeout=30
+    )
+except Exception:
+    print(f"{bcolors.FAIL}Bucket não encontrado - '{account}'{bcolors.ENDC}")
+    sys.exit()
+
+blob = bucket.get_blob(json_path)
+containers_dict = {}
+
+if not blob or not blob.exists():
+    account_stat, containers = swift_client.get_account(
+        url,
+        conn.auth_token,
+        marker=None,
+        end_marker=None,
+        full_listing=True,
+        http_conn=http_conn,
+        headers=headers
+    )
+
+    for container in containers:
+        containers_dict[container.get('name')] = False
+
+    blob = bucket.blob(json_path)
+    blob.upload_from_string(
+        json.dumps(containers_dict),
+        content_type='application/json',
+        num_retries=3,
+        timeout=900
+    )
+else:
+    containers_dict = json.loads(blob.download_as_bytes())
 
 account_stat, containers = swift_client.get_account(
     url,
@@ -99,10 +138,70 @@ for container in containers:
     result = db.session.execute(sql)
     row = dict(result.next())
     finished = True if row.get('finished') == 0 else False
+    executed = containers_dict[container_name]
 
     if finished:
-        container_count_gcp += 1
+        if not executed:
+            print(f"{bcolors.WARNING}'{container_name}'{bcolors.ENDC} - {bcolors.OKCYAN}Salvando metadados no GCS{bcolors.ENDC}")
+            containers_dict[container_name] = True
+
+            sql = f"SELECT SUM(object_count_gcp) AS object_count, sum(bytes_used_gcp) AS bytes_used FROM `transfer_container_paginated` WHERE project_id = '{project_id}' AND container_name = '{container_name}'"
+
+            result = db.session.execute(sql)
+            row = dict(result.next())
+            object_count = int(row.get('object_count'))
+            bytes_used = int(row.get('bytes_used'))
+
+            while True:
+                try:
+                    blob = bucket.get_blob(container_name + '/')
+                    metadata = blob.metadata or {}
+                    object_count_meta = int(metadata.get('object-count', 0))
+                    bytes_used_meta = int(metadata.get('bytes-used', 0))
+                    metadata['object-count'] = object_count_meta + object_count
+                    metadata['bytes-used'] = bytes_used_meta + bytes_used
+                    blob.metadata = metadata
+                    time.sleep(0.1)
+                    deadline = Retry(deadline=60)
+                    blob.patch(timeout=10, retry=deadline)
+                    break
+                except Exception as e:
+                    print(f"{bcolors.FAIL}Problemas ao salvar o blob '{container_name}': {e}{bcolors.ENDC}")
+                    time.sleep(5)
+
+            time.sleep(2)
+
+            while True:
+                try:
+                    labels = bucket.labels
+                    object_count_meta = int(labels.get('object-count', 0))
+                    bytes_used_meta = int(labels.get('bytes-used', 0))
+                    labels['object-count'] = object_count_meta + object_count
+                    labels['bytes-used'] = bytes_used_meta + bytes_used
+                    bucket.labels = labels
+                    time.sleep(0.1)
+                    deadline = Retry(deadline=60)
+                    bucket.patch(timeout=10, retry=deadline)
+                    break
+                except Exception as e:
+                    print(f"{bcolors.FAIL}Problemas ao salvar o bucket '{account}': {e}{bcolors.ENDC}")
+                    time.sleep(5)
+
+            bucket = storage_client.get_bucket(
+                'auth_f063e2edb7914e6aa123fd70a1f19df2',
+                timeout=30
+            )
+
+            blob = bucket.blob(json_path)
+            blob.upload_from_string(
+                json.dumps(containers_dict),
+                content_type='application/json',
+                num_retries=3,
+                timeout=900
+            )
+
         print(f"{bcolors.OKGREEN}'{container_name}'{bcolors.ENDC} - {bcolors.OKGREEN}{bcolors.BOLD}ok{bcolors.BOLD}{bcolors.ENDC} - {bcolors.OKCYAN}finalizado{bcolors.ENDC}")
+        container_count_gcp += 1
     else:
         print(f"{bcolors.WARNING}'{container_name}'{bcolors.ENDC} - {bcolors.WARNING}{bcolors.BOLD}nok{bcolors.BOLD}{bcolors.ENDC} - {bcolors.OKCYAN}em migração{bcolors.ENDC}")
 

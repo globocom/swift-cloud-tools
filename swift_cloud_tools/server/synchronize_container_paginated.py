@@ -243,7 +243,7 @@ class SynchronizeContainersPaginated():
         #      folder structure normalization       #
         #############################################
 
-        time.sleep(int(uniform(1, 4)) + int(uniform(2, 4)) + int(uniform(3, 4)))
+        time.sleep(int(uniform(1, 6)) + int(uniform(2, 6)) + int(uniform(3, 6)))
 
         count = 0
         while True:
@@ -288,55 +288,6 @@ class SynchronizeContainersPaginated():
                 ))
                 time.sleep(5)
                 count += 1
-
-        time.sleep(int(uniform(1, 7)) + int(uniform(3, 7)) + int(uniform(6, 7)))
-
-        while True:
-            try:
-                bucket_flush = storage_client.get_bucket(
-                    account,
-                    timeout=30
-                )
-                labels_flush = bucket_flush.labels
-                object_count_meta = int(labels_flush.get('object-count', 0))
-                bytes_used_meta = int(labels_flush.get('bytes-used', 0))
-                labels_flush['object-count'] = object_count_meta + transfer.object_count_gcp
-                labels_flush['bytes-used'] = bytes_used_meta + transfer.bytes_used_gcp
-                bucket_flush.labels = labels_flush
-                time.sleep(0.1)
-                deadline = Retry(deadline=60)
-                bucket_flush.patch(timeout=10, retry=deadline)
-                break
-            except Exception as err:
-                self.app.logger.error("[synchronize] 500 Save 'bucket': {}".format(
-                    err
-                ))
-                time.sleep(5)
-
-        time.sleep(int(uniform(1, 7)) + int(uniform(3, 7)) + int(uniform(6, 7)))
-
-        while True:
-            try:
-                bucket_flush = storage_client.get_bucket(
-                    account,
-                    timeout=30
-                )
-                blob = bucket_flush.get_blob(container_name + '/')
-                metadata = blob.metadata or {}
-                object_count_meta = int(metadata.get('object-count', 0))
-                bytes_used_meta = int(metadata.get('bytes-used', 0))
-                metadata['object-count'] = object_count_meta + transfer.object_count_gcp
-                metadata['bytes-used'] = bytes_used_meta + transfer.bytes_used_gcp
-                blob.metadata = metadata
-                time.sleep(0.1)
-                deadline = Retry(deadline=60)
-                blob.patch(timeout=10, retry=deadline)
-                break
-            except Exception as err:
-                self.app.logger.error("[synchronize] 500 Save 'bucket': {}".format(
-                    err
-                ))
-                time.sleep(5)
 
 
     def _get_container(self, app, storage_client, account, container, transfer, transfer_object, transfer_container_paginated, objects):
