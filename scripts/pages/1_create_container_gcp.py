@@ -115,9 +115,6 @@ for container in containers:
     blob = bucket.blob(container_name + '/')
     metadata = {}
 
-    metadata['object-count'] = meta.get('x-container-object-count', 0)
-    metadata['bytes-used'] = meta.get('x-container-bytes-used', 0)
-
     for item in meta.items():
         key, value = item
         key = key.lower()
