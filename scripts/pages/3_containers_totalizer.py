@@ -94,5 +94,5 @@ for container in containers:
     else:
         print(f"{bcolors.WARNING}'{container_name}'{bcolors.ENDC} - {bcolors.WARNING}{bcolors.BOLD}nok{bcolors.BOLD}{bcolors.ENDC} - {bcolors.OKCYAN}em migração{bcolors.ENDC}")
 
-print(f"{bcolors.WARNING}FInalizados {container_count_gcp} de {container_count_dccm}{bcolors.ENDC}")
+print(f"{bcolors.WARNING}Finalizados {container_count_gcp} de {container_count_dccm}{bcolors.ENDC}")
 print(f"{bcolors.OKGREEN}ok...{bcolors.ENDC}")
