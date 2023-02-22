@@ -213,6 +213,8 @@ class SynchronizeContainersPaginated():
             marker
         ))
 
+        time.sleep(int(uniform(1, 10)) + int(uniform(3, 10)) + int(uniform(6, 10)))
+
         object_count_gcp = 0
         bytes_used_gcp = 0
 
@@ -243,10 +245,7 @@ class SynchronizeContainersPaginated():
         #      folder structure normalization       #
         #############################################
 
-        time.sleep(int(uniform(1, 6)) + int(uniform(2, 6)) + int(uniform(3, 6)))
-
-        count = 0
-        while True:
+        for count in range(4):
             try:
                 if count == 0:
                     db.session.begin()
@@ -264,10 +263,8 @@ class SynchronizeContainersPaginated():
                     err
                 ))
                 time.sleep(5)
-                count += 1
 
-        count = 0
-        while True:
+        for count in range(4):
             try:
                 if count == 0:
                     db.session.begin()
@@ -287,7 +284,8 @@ class SynchronizeContainersPaginated():
                     err
                 ))
                 time.sleep(5)
-                count += 1
+
+        return
 
 
     def _get_container(self, app, storage_client, account, container, transfer, transfer_object, transfer_container_paginated, objects):
