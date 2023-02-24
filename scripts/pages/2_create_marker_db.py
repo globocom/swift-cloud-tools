@@ -37,6 +37,7 @@ conn = keystone.get_keystone_connection()
 url = f"https://api.s3.globoi.com/v1/AUTH_{project_id}"
 headers = {'X-Cloud-Bypass': '136f8e168edb41afbbad3da60d048c64'}
 marker = None
+count = 0
 
 http_conn = swift_client.http_connection(url, insecure=False, timeout=3600)
 
@@ -57,7 +58,8 @@ for container in containers:
     if not container_name:
         continue
 
-    sql = f"INSERT INTO `transfer_container_paginated` (`project_id`, `project_name`, `container_name`, `marker`, `hostname`, `environment`, `object_count_swift`, `bytes_used_swift`, `count_error`, `object_count_gcp`, `bytes_used_gcp`, `initial_date`, `final_date`) VALUES ('{project_id}', '{project_name}', '{container_name}', NULL, NULL, 'pages2', 0, 0, 0, 0, 0, NULL, NULL);"
+    sql = f"INSERT INTO `transfer_container_paginated` (`project_id`, `project_name`, `container_name`, `marker`, `hostname`, `environment`, `object_count_swift`, `bytes_used_swift`, `count_error`, `object_count_gcp`, `bytes_used_gcp`, `initial_date`, `final_date`) VALUES ('{project_id}', '{project_name}', '{container_name}', NULL, NULL, 'pages', 0, 0, 0, 0, 0, NULL, NULL);"
+    count += 1
 
     print(f"{bcolors.OKGREEN}'{project_name}' - '{container_name}'{bcolors.ENDC} - {bcolors.OKCYAN}''{bcolors.ENDC}")
     if applying:
@@ -79,7 +81,8 @@ for container in containers:
 
         if (len(objects) > 0):
             marker = objects[-1].get('name')
-            sql = f"INSERT INTO `transfer_container_paginated` (`project_id`, `project_name`, `container_name`, `marker`, `hostname`, `environment`, `object_count_swift`, `bytes_used_swift`, `count_error`, `object_count_gcp`, `bytes_used_gcp`, `initial_date`, `final_date`) VALUES ('{project_id}', '{project_name}', '{container_name}', '{marker}', NULL, 'pages2', 0, 0, 0, 0, 0, NULL, NULL);"
+            sql = f"INSERT INTO `transfer_container_paginated` (`project_id`, `project_name`, `container_name`, `marker`, `hostname`, `environment`, `object_count_swift`, `bytes_used_swift`, `count_error`, `object_count_gcp`, `bytes_used_gcp`, `initial_date`, `final_date`) VALUES ('{project_id}', '{project_name}', '{container_name}', '{marker}', NULL, 'pages', 0, 0, 0, 0, 0, NULL, NULL);"
+            count += 1
 
             print(f"{bcolors.OKGREEN}'{project_name}' - '{container_name}'{bcolors.ENDC} - {bcolors.OKCYAN}'{marker}'{bcolors.ENDC}")
             if applying:
@@ -87,4 +90,5 @@ for container in containers:
         else:
             break
 
+print(f"{bcolors.WARNING}Criadas {count} páginas{bcolors.ENDC}")
 print(f"{bcolors.OKGREEN}ok...{bcolors.ENDC}")

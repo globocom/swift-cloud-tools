@@ -213,17 +213,16 @@ class SynchronizeContainersPaginated():
             marker
         ))
 
-        time.sleep(int(uniform(1, 10)) + int(uniform(3, 10)) + int(uniform(6, 10)))
-
         object_count_gcp = 0
         bytes_used_gcp = 0
 
         #############################################
         #      folder structure normalization       #
         #############################################
-        self.app.logger.info("[{}] Folder structure normalization '{}'".format(
+        self.app.logger.info("[{}] Folder structure normalization '{}', Marker '{}'".format(
             transfer_object.project_name,
-            container_name
+            container_name,
+            marker
         ))
 
         if self.project_id in (self.unformatted):
@@ -244,6 +243,14 @@ class SynchronizeContainersPaginated():
         #############################################
         #      folder structure normalization       #
         #############################################
+
+        self.app.logger.info("[{}] Save object_count and bytes_used GCP '{}', Marker '{}'".format(
+            transfer_object.project_name,
+            container_name,
+            marker
+        ))
+
+        time.sleep(1)
 
         for count in range(4):
             try:
@@ -284,6 +291,13 @@ class SynchronizeContainersPaginated():
                     err
                 ))
                 time.sleep(5)
+
+        self.app.logger.info("[{}] Finished thread processing '{}', Marker '{}', Hostname '{}'".format(
+            transfer_object.project_name,
+            container_name,
+            marker,
+            hostname
+        ))
 
         return
 
