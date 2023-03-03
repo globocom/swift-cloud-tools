@@ -1,5 +1,5 @@
 # EXAMPLE
-# python scripts/small/create_db.py production
+# python scripts/small/create_db.py False production
 
 import subprocess
 import sys
@@ -23,7 +23,8 @@ class bcolors:
     UNDERLINE = '\033[4m'
 
 params = sys.argv[1:]
-environment = params[0]
+applying = eval(params[0])
+environment = params[1]
 
 app = create_app(f"config/{environment}_config.py")
 ctx = app.app_context()
@@ -57,6 +58,8 @@ for project in projetos:
         continue
 
     print(f"{bcolors.OKCYAN}'{project.name}'{bcolors.ENDC} - {bcolors.OKGREEN}ok{bcolors.ENDC}")
-    query = db.session.execute(sql)
+
+    if applying:
+        query = db.session.execute(sql)
 
 print(f"{bcolors.OKGREEN}ok...{bcolors.ENDC}")
