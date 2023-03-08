@@ -101,11 +101,12 @@ for project in projects:
 
         project_dict[key] = {"project_id": project.project_id, "project_name": project.project_name, "container_name": container_name, "status": ""}
 
+        if finished:
+            container_count_gcp += 1
         if applying:
             if finished:
                 print(f"{bcolors.OKGREEN}'{container_name}'{bcolors.ENDC} - {bcolors.OKGREEN}{bcolors.BOLD}ok{bcolors.BOLD}{bcolors.ENDC} - {bcolors.OKCYAN}finalizado{bcolors.ENDC}")
                 project_dict[key]['status'] = 'finalizado'
-                container_count_gcp += 1
             else:
                 print(f"{bcolors.WARNING}'{container_name}'{bcolors.ENDC} - {bcolors.WARNING}{bcolors.BOLD}nok{bcolors.BOLD}{bcolors.ENDC} - {bcolors.OKCYAN}em migração{bcolors.ENDC}")
                 project_dict[key]['status'] = 'em migração'
