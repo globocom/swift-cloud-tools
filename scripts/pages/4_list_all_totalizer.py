@@ -71,11 +71,13 @@ for project in projects:
         row = dict(result.next())
         exist = row.get('exist') == True
 
-        if not exist:
-            print(f"{bcolors.FAIL}O projeto '{project.project_id}' não está cadastrado na base{bcolors.ENDC}")
-            break
-
         container_name = container.get('name')
+        key = f"{project.id}-{container_name}"
+
+        if not exist:
+            print(f"{bcolors.FAIL}O container '{container_name}' do projeto '{project.project_id}' não está cadastrado na base{bcolors.ENDC}")
+            project_dict[key] = {"project_id": project.project_id, "project_name": project.project_name, "container_name": container_name, "status": "não iniciado"}
+            continue
 
         if not container_name:
             print(f"{bcolors.WARNING}O nome do container '{container_name}' está incorreto{bcolors.ENDC}")
@@ -97,7 +99,6 @@ for project in projects:
         row = dict(result.next())
         finished = True if row.get('finished') == 0 else False
 
-        key = f"{project.id}-{container_name}"
         project_dict[key] = {"project_id": project.project_id, "project_name": project.project_name, "container_name": container_name, "status": ""}
 
         if applying:
