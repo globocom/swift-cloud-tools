@@ -1,5 +1,5 @@
 # EXAMPLE
-# python scripts/pages/4_reset_thread.py 643f797035bf416ba8001e95947622c0 show_failover False production
+# python scripts/pages/5_reset_thread.py 643f797035bf416ba8001e95947622c0 False production
 
 import sys
 
@@ -20,9 +20,8 @@ class bcolors:
 
 params = sys.argv[1:]
 project_id = params[0]
-project_name = params[1]
-applying = eval(params[2])
-environment = params[3]
+applying = eval(params[1])
+environment = params[2]
 
 app = create_app(f"config/{environment}_config.py")
 ctx = app.app_context()
@@ -31,8 +30,20 @@ ctx.push()
 count = 0
 minutes = 40
 
-sql = f"SELECT * FROM `transfer_container_paginated` WHERE project_id = '{project_id}' AND hostname IS NOT NULL AND initial_date IS NOT NULL AND final_date IS NULL AND date_add(initial_date,interval {minutes} minute) <= now();"
+sql = f"SELECT project_name FROM `transfer_project` WHERE project_id='{project_id}';"
+result = db.session.execute(sql)
 
+if result.rowcount == 0:
+    print(f"\n{bcolors.WARNING}O projeto {bcolors.ENDC}{bcolors.OKGREEN}'{project_id}'{bcolors.ENDC}{bcolors.WARNING} não está cadastrado na tabela {bcolors.ENDC}{bcolors.OKGREEN}`transfer_project`{bcolors.ENDC}")
+    sys.exit()
+
+row = dict(result.next())
+project_name = row.get('project_name')
+
+print(f"\n{bcolors.OKCYAN}PROJETO - {bcolors.ENDC}{bcolors.OKGREEN}{project_name}{bcolors.ENDC}")
+print(f"{bcolors.OKCYAN}==========================================={bcolors.ENDC}")
+
+sql = f"SELECT * FROM `transfer_container_paginated` WHERE project_id = '{project_id}' AND hostname IS NOT NULL AND initial_date IS NOT NULL AND final_date IS NULL AND date_add(initial_date,interval {minutes} minute) <= now();"
 results = db.session.execute(sql)
 
 for result in results:
@@ -45,5 +56,5 @@ for result in results:
         query = db.session.execute(sql)
     count += 1
 
-print(f"{bcolors.WARNING}{count} registros reiniciados{bcolors.ENDC}")
-print(f"{bcolors.OKGREEN}ok...{bcolors.ENDC}")
+print(f"\n{bcolors.WARNING}{count} registros reiniciados{bcolors.ENDC}")
+print(f"\n{bcolors.OKGREEN}ok...{bcolors.ENDC}")

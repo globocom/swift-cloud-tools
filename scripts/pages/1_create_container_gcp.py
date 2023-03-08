@@ -62,8 +62,12 @@ container_count_dccm = int(account_stat.get('x-account-container-count'))
 object_count_dccm = int(account_stat.get('x-account-object-count'))
 bytes_used_dccm = int(account_stat.get('x-account-bytes-used'))
 
-sql = f"INSERT INTO `transfer_project` (`project_id`, `project_name`, `environment`, `container_count_swift`, `object_count_swift`, `bytes_used_swift`, `last_object`, `count_error`, `container_count_gcp`, `object_count_gcp`, `bytes_used_gcp`, `initial_date`, `final_date`) VALUES ('{project_id}', '{project_name}', 'pages2', {container_count_dccm}, {object_count_dccm}, {bytes_used_dccm}, '', 0, 0, 0, 0, NULL, NULL);"
-query = db.session.execute(sql)
+print(f"\n{bcolors.OKCYAN}PROJETO - {bcolors.ENDC}{bcolors.OKGREEN}{project_name}{bcolors.ENDC}")
+print(f"{bcolors.OKCYAN}==========================================={bcolors.ENDC}")
+
+if applying:
+    sql = f"INSERT INTO `transfer_project` (`project_id`, `project_name`, `environment`, `container_count_swift`, `object_count_swift`, `bytes_used_swift`, `last_object`, `count_error`, `container_count_gcp`, `object_count_gcp`, `bytes_used_gcp`, `initial_date`, `final_date`) VALUES ('{project_id}', '{project_name}', 'pages', {container_count_dccm}, {object_count_dccm}, {bytes_used_dccm}, '', 0, 0, 0, 0, NULL, NULL);"
+    query = db.session.execute(sql)
 
 try:
     bucket = storage_client.get_bucket(
@@ -153,5 +157,5 @@ for container in containers:
 
     print(f"{bcolors.OKCYAN}Criando container '{container_name}'{bcolors.ENDC} - {bcolors.OKGREEN}{bcolors.BOLD}ok{bcolors.BOLD}{bcolors.ENDC} - {container_count_gcp}")
 
-print(f"{bcolors.WARNING}Criados {container_count_gcp} de {container_count_dccm}{bcolors.ENDC}")
-print(f"{bcolors.OKGREEN}ok...{bcolors.ENDC}")
+print(f"\n{bcolors.WARNING}Criados {container_count_gcp} de {container_count_dccm}{bcolors.ENDC}")
+print(f"\n{bcolors.OKGREEN}ok...{bcolors.ENDC}")

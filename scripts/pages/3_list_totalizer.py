@@ -1,5 +1,5 @@
 # EXAMPLE
-# python scripts/pages/3_containers_totalizer.py 643f797035bf416ba8001e95947622c0 show_failover production
+# python scripts/pages/3_list_totalizer.py 643f797035bf416ba8001e95947622c0 False production
 
 import sys
 
@@ -23,7 +23,7 @@ class bcolors:
 
 params = sys.argv[1:]
 project_id = params[0]
-project_name = params[1]
+applying = eval(params[1])
 environment = params[2]
 
 app = create_app(f"config/{environment}_config.py")
@@ -53,6 +53,18 @@ account_stat, containers = swift_client.get_account(
 container_count_dccm = len(containers)
 container_count_gcp = 0
 
+sql = f"SELECT project_name FROM `transfer_project` WHERE project_id='{project_id}';"
+result = db.session.execute(sql)
+
+if result.rowcount == 0:
+    print(f"\n{bcolors.WARNING}O projeto {bcolors.ENDC}{bcolors.OKGREEN}'{project_id}'{bcolors.ENDC}{bcolors.WARNING} não está cadastrado na tabela {bcolors.ENDC}{bcolors.OKGREEN}`transfer_project`{bcolors.ENDC}")
+    sys.exit()
+
+row = dict(result.next())
+project_name = row.get('project_name')
+
+print(f"\n{bcolors.OKCYAN}PROJETO - {bcolors.ENDC}{bcolors.OKGREEN}{project_name}{bcolors.ENDC}")
+print(f"{bcolors.OKCYAN}==========================================={bcolors.ENDC}")
 print(f"{bcolors.OKBLUE}################ Totalização de containers do projeto '{project_name}' ################{bcolors.ENDC}")
 
 for container in containers:
@@ -88,11 +100,12 @@ for container in containers:
     row = dict(result.next())
     finished = True if row.get('finished') == 0 else False
 
-    if finished:
-        print(f"{bcolors.OKGREEN}'{container_name}'{bcolors.ENDC} - {bcolors.OKGREEN}{bcolors.BOLD}ok{bcolors.BOLD}{bcolors.ENDC} - {bcolors.OKCYAN}finalizado{bcolors.ENDC}")
-        container_count_gcp += 1
-    else:
-        print(f"{bcolors.WARNING}'{container_name}'{bcolors.ENDC} - {bcolors.WARNING}{bcolors.BOLD}nok{bcolors.BOLD}{bcolors.ENDC} - {bcolors.OKCYAN}em migração{bcolors.ENDC}")
+    if applying:
+        if finished:
+            print(f"{bcolors.OKGREEN}'{container_name}'{bcolors.ENDC} - {bcolors.OKGREEN}{bcolors.BOLD}ok{bcolors.BOLD}{bcolors.ENDC} - {bcolors.OKCYAN}finalizado{bcolors.ENDC}")
+            container_count_gcp += 1
+        else:
+            print(f"{bcolors.WARNING}'{container_name}'{bcolors.ENDC} - {bcolors.WARNING}{bcolors.BOLD}nok{bcolors.BOLD}{bcolors.ENDC} - {bcolors.OKCYAN}em migração{bcolors.ENDC}")
 
-print(f"{bcolors.WARNING}Finalizados {container_count_gcp} de {container_count_dccm}{bcolors.ENDC}")
-print(f"{bcolors.OKGREEN}ok...{bcolors.ENDC}")
+print(f"\n{bcolors.WARNING}Finalizados {container_count_gcp} de {container_count_dccm}{bcolors.ENDC}")
+print(f"\n{bcolors.OKGREEN}ok...{bcolors.ENDC}")

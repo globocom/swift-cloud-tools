@@ -1,5 +1,5 @@
 # EXAMPLE
-# python scripts/pages/2_create_marker_db.py 643f797035bf416ba8001e95947622c0 show_failover False production
+# python scripts/pages/2_create_marker_db.py 643f797035bf416ba8001e95947622c0 False production
 
 import sys
 
@@ -23,9 +23,8 @@ class bcolors:
 
 params = sys.argv[1:]
 project_id = params[0]
-project_name = params[1]
-applying = eval(params[2])
-environment = params[3]
+applying = eval(params[1])
+environment = params[2]
 
 app = create_app(f"config/{environment}_config.py")
 ctx = app.app_context()
@@ -51,6 +50,28 @@ account_stat, containers = swift_client.get_account(
     headers=headers
 )
 
+container_count_dccm = int(account_stat.get('x-account-container-count'))
+object_count_dccm = int(account_stat.get('x-account-object-count'))
+bytes_used_dccm = int(account_stat.get('x-account-bytes-used'))
+
+sql = f"SELECT project_name FROM `transfer_project` WHERE project_id='{project_id}';"
+result = db.session.execute(sql)
+
+if result.rowcount == 0:
+    print(f"\n{bcolors.WARNING}O projeto {bcolors.ENDC}{bcolors.OKGREEN}'{project_id}'{bcolors.ENDC}{bcolors.WARNING} não está cadastrado na tabela {bcolors.ENDC}{bcolors.OKGREEN}`transfer_project`{bcolors.ENDC}")
+    sys.exit()
+
+row = dict(result.next())
+project_name = row.get('project_name')
+
+# sql = f"INSERT INTO `transfer_project` (`project_id`, `project_name`, `environment`, `container_count_swift`, `object_count_swift`, `bytes_used_swift`, `last_object`, `count_error`, `container_count_gcp`, `object_count_gcp`, `bytes_used_gcp`, `initial_date`, `final_date`) VALUES ('{project_id}', '{project_name}', 'pages', {container_count_dccm}, {object_count_dccm}, {bytes_used_dccm}, '', 0, 0, 0, 0, NULL, NULL);"
+
+# if applying:
+#     query = db.session.execute(sql)
+
+print(f"\n{bcolors.OKCYAN}PROJETO - {bcolors.ENDC}{bcolors.OKGREEN}{project_name}{bcolors.ENDC}")
+print(f"{bcolors.OKCYAN}==========================================={bcolors.ENDC}")
+
 for container in containers:
     container_name = container.get('name')
     marker = None
@@ -58,10 +79,11 @@ for container in containers:
     if not container_name:
         continue
 
-    sql = f"INSERT INTO `transfer_container_paginated` (`project_id`, `project_name`, `container_name`, `marker`, `hostname`, `environment`, `object_count_swift`, `bytes_used_swift`, `count_error`, `object_count_gcp`, `bytes_used_gcp`, `initial_date`, `final_date`) VALUES ('{project_id}', '{project_name}', '{container_name}', NULL, NULL, 'pages', 0, 0, 0, 0, 0, NULL, NULL);"
+    sql = f"INSERT INTO `transfer_container_paginated` (`project_id`, `project_name`, `container_name`, `marker`, `hostname`, `environment`, `object_count_swift`, `bytes_used_swift`, `count_error`, `object_count_gcp`, `bytes_used_gcp`, `initial_date`, `final_date`) VALUES ('{project_id}', '{project_name}', '{container_name}', NULL, NULL, 'pages2', 0, 0, 0, 0, 0, NULL, NULL);"
     count += 1
 
     print(f"{bcolors.OKGREEN}'{project_name}' - '{container_name}'{bcolors.ENDC} - {bcolors.OKCYAN}''{bcolors.ENDC}")
+
     if applying:
         query = db.session.execute(sql)
 
@@ -81,14 +103,15 @@ for container in containers:
 
         if (len(objects) > 0):
             marker = objects[-1].get('name')
-            sql = f"INSERT INTO `transfer_container_paginated` (`project_id`, `project_name`, `container_name`, `marker`, `hostname`, `environment`, `object_count_swift`, `bytes_used_swift`, `count_error`, `object_count_gcp`, `bytes_used_gcp`, `initial_date`, `final_date`) VALUES ('{project_id}', '{project_name}', '{container_name}', '{marker}', NULL, 'pages', 0, 0, 0, 0, 0, NULL, NULL);"
+            sql = f"INSERT INTO `transfer_container_paginated` (`project_id`, `project_name`, `container_name`, `marker`, `hostname`, `environment`, `object_count_swift`, `bytes_used_swift`, `count_error`, `object_count_gcp`, `bytes_used_gcp`, `initial_date`, `final_date`) VALUES ('{project_id}', '{project_name}', '{container_name}', '{marker}', NULL, 'pages2', 0, 0, 0, 0, 0, NULL, NULL);"
             count += 1
 
             print(f"{bcolors.OKGREEN}'{project_name}' - '{container_name}'{bcolors.ENDC} - {bcolors.OKCYAN}'{marker}'{bcolors.ENDC}")
+
             if applying:
                 query = db.session.execute(sql)
         else:
             break
 
-print(f"{bcolors.WARNING}Criadas {count} páginas{bcolors.ENDC}")
-print(f"{bcolors.OKGREEN}ok...{bcolors.ENDC}")
+print(f"\n{bcolors.WARNING}Criadas {count} páginas{bcolors.ENDC}")
+print(f"\n{bcolors.OKGREEN}ok...{bcolors.ENDC}")
