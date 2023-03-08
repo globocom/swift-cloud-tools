@@ -30,7 +30,7 @@ ctx.push()
 count = 0
 minutes = 40
 
-sql = f"SELECT project_name FROM `transfer_project` WHERE project_id='{project_id}';"
+sql = f"SELECT DISTINCT project_name FROM `transfer_container_paginated` WHERE initial_date IS NOT NULL AND final_date IS NULL AND project_id='{project_id}';"
 result = db.session.execute(sql)
 
 if result.rowcount == 0:
