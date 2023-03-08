@@ -64,11 +64,6 @@ if result.rowcount == 0:
 row = dict(result.next())
 project_name = row.get('project_name')
 
-# sql = f"INSERT INTO `transfer_project` (`project_id`, `project_name`, `environment`, `container_count_swift`, `object_count_swift`, `bytes_used_swift`, `last_object`, `count_error`, `container_count_gcp`, `object_count_gcp`, `bytes_used_gcp`, `initial_date`, `final_date`) VALUES ('{project_id}', '{project_name}', 'pages', {container_count_dccm}, {object_count_dccm}, {bytes_used_dccm}, '', 0, 0, 0, 0, NULL, NULL);"
-
-# if applying:
-#     query = db.session.execute(sql)
-
 print(f"\n{bcolors.OKCYAN}PROJETO - {bcolors.ENDC}{bcolors.OKGREEN}{project_name}{bcolors.ENDC}")
 print(f"{bcolors.OKCYAN}==========================================={bcolors.ENDC}")
 
@@ -79,7 +74,7 @@ for container in containers:
     if not container_name:
         continue
 
-    sql = f"INSERT INTO `transfer_container_paginated` (`project_id`, `project_name`, `container_name`, `marker`, `hostname`, `environment`, `object_count_swift`, `bytes_used_swift`, `count_error`, `object_count_gcp`, `bytes_used_gcp`, `initial_date`, `final_date`) VALUES ('{project_id}', '{project_name}', '{container_name}', NULL, NULL, 'pages2', 0, 0, 0, 0, 0, NULL, NULL);"
+    sql = f"INSERT INTO `transfer_container_paginated` (`project_id`, `project_name`, `container_name`, `marker`, `hostname`, `environment`, `object_count_swift`, `bytes_used_swift`, `count_error`, `object_count_gcp`, `bytes_used_gcp`, `initial_date`, `final_date`) VALUES ('{project_id}', '{project_name}', '{container_name}', NULL, NULL, 'pages', 0, 0, 0, 0, 0, NULL, NULL);"
     count += 1
 
     print(f"{bcolors.OKGREEN}'{project_name}' - '{container_name}'{bcolors.ENDC} - {bcolors.OKCYAN}''{bcolors.ENDC}")
@@ -103,7 +98,7 @@ for container in containers:
 
         if (len(objects) > 0):
             marker = objects[-1].get('name')
-            sql = f"INSERT INTO `transfer_container_paginated` (`project_id`, `project_name`, `container_name`, `marker`, `hostname`, `environment`, `object_count_swift`, `bytes_used_swift`, `count_error`, `object_count_gcp`, `bytes_used_gcp`, `initial_date`, `final_date`) VALUES ('{project_id}', '{project_name}', '{container_name}', '{marker}', NULL, 'pages2', 0, 0, 0, 0, 0, NULL, NULL);"
+            sql = f"INSERT INTO `transfer_container_paginated` (`project_id`, `project_name`, `container_name`, `marker`, `hostname`, `environment`, `object_count_swift`, `bytes_used_swift`, `count_error`, `object_count_gcp`, `bytes_used_gcp`, `initial_date`, `final_date`) VALUES ('{project_id}', '{project_name}', '{container_name}', '{marker}', NULL, 'pages', 0, 0, 0, 0, 0, NULL, NULL);"
             count += 1
 
             print(f"{bcolors.OKGREEN}'{project_name}' - '{container_name}'{bcolors.ENDC} - {bcolors.OKCYAN}'{marker}'{bcolors.ENDC}")
