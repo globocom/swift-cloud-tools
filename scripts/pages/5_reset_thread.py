@@ -56,5 +56,5 @@ for result in results:
         query = db.session.execute(sql)
     count += 1
 
-print(f"\n{bcolors.WARNING}{count} registros reiniciados{bcolors.ENDC}")
+print(f"\n{bcolors.WARNING}{count} registros reiniciado(s){bcolors.ENDC}")
 print(f"\n{bcolors.OKGREEN}ok...{bcolors.ENDC}")

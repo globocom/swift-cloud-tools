@@ -36,6 +36,8 @@ for project in projects:
     print(f"\n{bcolors.OKCYAN}PROJETO - {bcolors.ENDC}{bcolors.OKGREEN}{project.project_name}{bcolors.ENDC}")
     print(f"{bcolors.OKCYAN}==========================================={bcolors.ENDC}")
 
+    count_project = 0
+
     sql = f"SELECT * FROM `transfer_container_paginated` WHERE project_id = '{project.project_id}' AND hostname IS NOT NULL AND initial_date IS NOT NULL AND final_date IS NULL AND date_add(initial_date,interval {minutes} minute) <= now();"
     results = db.session.execute(sql)
 
@@ -47,7 +49,10 @@ for project in projects:
 
         if applying:
             query = db.session.execute(sql)
+        count_project += 1
         count += 1
 
-print(f"\n{bcolors.WARNING}{count} registros reiniciados{bcolors.ENDC}")
+    print(f"\n{bcolors.HEADER}{count_project} registro(s) reiniciado(s){bcolors.ENDC}")
+
+print(f"\n{bcolors.WARNING}{count} registro(s) reiniciado(s){bcolors.ENDC}")
 print(f"\n{bcolors.OKGREEN}ok...{bcolors.ENDC}")

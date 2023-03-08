@@ -2,6 +2,8 @@
 # python scripts/pages/3_list_totalizer.py 643f797035bf416ba8001e95947622c0 False production
 
 import sys
+import csv
+import os
 
 from swift_cloud_tools.models import db
 from swift_cloud_tools.server.utils import Keystone
@@ -52,6 +54,7 @@ account_stat, containers = swift_client.get_account(
 
 container_count_dccm = len(containers)
 container_count_gcp = 0
+project_dict = {}
 
 sql = f"SELECT project_name FROM `transfer_project` WHERE project_id='{project_id}';"
 result = db.session.execute(sql)
@@ -100,12 +103,23 @@ for container in containers:
     row = dict(result.next())
     finished = True if row.get('finished') == 0 else False
 
+    project_dict[container_name] = {"project_id": project_id, "project_name": project_name, "container_name": container_name, "status": ""}
+
     if applying:
         if finished:
             print(f"{bcolors.OKGREEN}'{container_name}'{bcolors.ENDC} - {bcolors.OKGREEN}{bcolors.BOLD}ok{bcolors.BOLD}{bcolors.ENDC} - {bcolors.OKCYAN}finalizado{bcolors.ENDC}")
+            project_dict[container_name]['status'] = 'finalizado'
             container_count_gcp += 1
         else:
             print(f"{bcolors.WARNING}'{container_name}'{bcolors.ENDC} - {bcolors.WARNING}{bcolors.BOLD}nok{bcolors.BOLD}{bcolors.ENDC} - {bcolors.OKCYAN}em migração{bcolors.ENDC}")
+            project_dict[container_name]['status'] = 'em migração'
+
+if applying:
+    with open(os.getcwd() + '/list_totalizer.csv', 'w', newline='', encoding='utf-8') as csvfile:
+        fieldnames = ["project_id", "project_name", "container_name", "status"]
+        spamwriter = csv.DictWriter(csvfile, fieldnames=fieldnames)
+        spamwriter.writeheader()
+        spamwriter.writerows(project_dict.values())
 
 print(f"\n{bcolors.WARNING}Finalizados {container_count_gcp} de {container_count_dccm}{bcolors.ENDC}")
 print(f"\n{bcolors.OKGREEN}ok...{bcolors.ENDC}")
