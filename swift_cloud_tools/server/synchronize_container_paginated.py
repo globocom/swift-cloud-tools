@@ -159,6 +159,7 @@ class SynchronizeContainersPaginated():
             ))
 
         if len(objects) > 0:
+            objects.sort(key=lambda x: -x["bytes"])
             page_size = 1000
             parts = []
 
