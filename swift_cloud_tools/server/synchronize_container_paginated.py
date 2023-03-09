@@ -399,6 +399,8 @@ class SynchronizeContainersPaginated():
                     continue
 
                 del blob
+
+                transfer.object_count_gcp += 1
             else:
                 if obj.get('content_type') != 'application/directory':
                     try:
@@ -738,6 +740,8 @@ class SynchronizeContainersPaginated():
                     continue
 
                 del blob
+
+                transfer.object_count_gcp += 1
             else:
                 #############################################
                 #      folder structure normalization       #
