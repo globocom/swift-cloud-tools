@@ -189,7 +189,7 @@ if len(containers) > 300:
     for i in range(len(threads)):
         threads[i].join()
 else:
-    _create_containers(containers)
+    _create_containers(*containers)
 
 print(f"\n{bcolors.WARNING}Criados {container_count_gcp} de {container_count_dccm}{bcolors.ENDC}")
 print(f"\n{bcolors.OKGREEN}ok...{bcolors.ENDC}")
