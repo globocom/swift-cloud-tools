@@ -3,6 +3,8 @@
 
 import time
 import sys
+import itertools
+import threading
 
 from swift_cloud_tools.models import TransferProject, db
 from swift_cloud_tools.server.utils import Keystone, Google
@@ -62,6 +64,68 @@ container_count_dccm = int(account_stat.get('x-account-container-count'))
 object_count_dccm = int(account_stat.get('x-account-object-count'))
 bytes_used_dccm = int(account_stat.get('x-account-bytes-used'))
 
+def _create_containers(*containers):
+    global container_count_gcp
+    for container in containers:
+        container_name = container.get('name')
+
+        if not container_name:
+            continue
+
+        meta, objects = swift_client.get_container(
+            url,
+            conn.auth_token,
+            container_name,
+            delimiter=None,
+            prefix=None,
+            marker=marker,
+            full_listing=False,
+            http_conn=http_conn,
+            headers=headers,
+            limit=1
+        )
+
+        blob = bucket.blob(container_name + '/')
+        metadata = {}
+
+        metadata['object-count'] = meta.get('x-container-object-count', 0)
+        metadata['bytes-used'] = meta.get('x-container-bytes-used', 0)
+
+        for item in meta.items():
+            key, value = item
+            key = key.lower()
+            prefix = key.split('x-container-meta-')
+
+            if len(prefix) > 1:
+                meta_key = f'meta-{prefix[1].lower()}'
+                metadata[meta_key] = item[1].lower()
+                continue
+
+            if key == 'x-container-read':
+                metadata["read"] = value
+                continue
+
+            if key == 'x-versions-location' or key == 'x-history-location':
+                metadata["x-versions-location"] = value
+                continue
+
+            if key == 'x-undelete-enabled':
+                metadata["x-container-sysmeta-undelete-enabled"] = value
+                metadata["x-undelete-enabled"] = value
+                continue
+
+        blob.metadata = metadata
+
+        if applying:
+            blob.upload_from_string('',
+                content_type='application/directory',
+                num_retries=3,
+                timeout=30
+            )
+        container_count_gcp += 1
+
+        print(f"{bcolors.OKCYAN}Criando container '{container_name}'{bcolors.ENDC} - {bcolors.OKGREEN}{bcolors.BOLD}ok{bcolors.BOLD}{bcolors.ENDC} - {container_count_gcp}")
+
 print(f"\n{bcolors.OKCYAN}PROJETO - {bcolors.ENDC}{bcolors.OKGREEN}{project_name}{bcolors.ENDC}")
 print(f"{bcolors.OKCYAN}==========================================={bcolors.ENDC}")
 
@@ -97,65 +161,35 @@ except NotFound:
         print(f"{bcolors.FAIL}Bucket não encontrado - '{account}'{bcolors.ENDC}")
         sys.exit()
 
-for container in containers:
-    container_name = container.get('name')
+# Para projetos com muitos containers, cria esses containers em paralelo
+if len(containers) > 300:
+    n_threads = 10
+    parts = []
+    page_size = len(containers) // n_threads
 
-    if not container_name:
-        continue
+    start = 0
+    end = page_size
 
-    meta, objects = swift_client.get_container(
-        url,
-        conn.auth_token,
-        container_name,
-        delimiter=None,
-        prefix=None,
-        marker=marker,
-        full_listing=False,
-        http_conn=http_conn,
-        headers=headers,
-        limit=1
-    )
+    while True:
+        res = list(itertools.islice(containers, start, end))
+        start += page_size
+        end += page_size
+        if not res:
+            break
+        parts.append(res)
 
-    blob = bucket.blob(container_name + '/')
-    metadata = {}
+    threads = [None] * len(parts)
 
-    metadata['object-count'] = meta.get('x-container-object-count', 0)
-    metadata['bytes-used'] = meta.get('x-container-bytes-used', 0)
-
-    for item in meta.items():
-        key, value = item
-        key = key.lower()
-        prefix = key.split('x-container-meta-')
-
-        if len(prefix) > 1:
-            meta_key = f'meta-{prefix[1].lower()}'
-            metadata[meta_key] = item[1].lower()
-            continue
-
-        if key == 'x-container-read':
-            metadata["read"] = value
-            continue
-
-        if key == 'x-versions-location' or key == 'x-history-location':
-            metadata["x-versions-location"] = value
-            continue
-
-        if key == 'x-undelete-enabled':
-            metadata["x-container-sysmeta-undelete-enabled"] = value
-            metadata["x-undelete-enabled"] = value
-            continue
-
-    blob.metadata = metadata
-
-    if applying:
-        blob.upload_from_string('',
-            content_type='application/directory',
-            num_retries=3,
-            timeout=30
-        )
-    container_count_gcp += 1
-
-    print(f"{bcolors.OKCYAN}Criando container '{container_name}'{bcolors.ENDC} - {bcolors.OKGREEN}{bcolors.BOLD}ok{bcolors.BOLD}{bcolors.ENDC} - {container_count_gcp}")
+    for i in range(len(threads)):
+        time.sleep(0.5)
+        threads[i] = threading.Thread(target=_create_containers, args=(
+            parts[i]
+        ))
+        threads[i].start()
+    for i in range(len(threads)):
+        threads[i].join()
+else:
+    _create_containers(containers)
 
 print(f"\n{bcolors.WARNING}Criados {container_count_gcp} de {container_count_dccm}{bcolors.ENDC}")
 print(f"\n{bcolors.OKGREEN}ok...{bcolors.ENDC}")
