@@ -30,7 +30,7 @@ def create_app(config_module=None):
 
     app.register_blueprint(api_v1)
 
-    handler = RotatingFileHandler('swift-cloud-tools.log', maxBytes=26214400, backupCount=0)
+    handler = RotatingFileHandler('swift-cloud-tools.log', maxBytes=52428800, backupCount=1)
     handler.setLevel(logging.INFO)
     logging.basicConfig(
         level=logging.INFO,
