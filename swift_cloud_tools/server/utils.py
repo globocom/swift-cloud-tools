@@ -46,10 +46,14 @@ class Google():
 
     def get_storage_client(self):
         credentials = self._get_credentials()
-        return storage.Client(
+        client = storage.Client(
             credentials=credentials,
             client_options={'api_endpoint': os.environ.get("GCS_API_ACCESS_ENDPOINT")}
         )
+        adapter = requests.adapters.HTTPAdapter(pool_connections=128, pool_maxsize=128, max_retries=3, pool_block=True)
+        client._http.mount("https://", adapter)
+        client._http._auth_request.session.mount("https://", adapter)
+        return client
 
     def get_client(self):
         return service_account.Credentials.from_service_account_info(
