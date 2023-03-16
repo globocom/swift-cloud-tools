@@ -96,7 +96,7 @@ class Keystone():
             auth_url=os.environ.get("KEYSTONE_URL"),
             user_domain_name='Default',
             project_domain_name='Default',
-            timeout=3
+            timeout=300
         )
 
 
