@@ -73,20 +73,24 @@ async def work():
 
         diff = number_of_units - len(hostnames)
 
-        if hostname in hostnames:
-            if diff == 0:
-                count = hostnames[hostname]
-                del hostnames[hostname]
-                has_small = False
-                for item in hostnames:
-                    if hostnames[item] < count:
-                        has_small = True
-                        break
-                if has_small:
-                    raws = []
-            else:
-                raws = []
+        if (diff == 0) or (hostname in hostnames):
+            raws = []
 
+        # if hostname in hostnames:
+        #     if diff == 0:
+        #         count = hostnames[hostname]
+        #         del hostnames[hostname]
+        #         has_small = False
+        #         for item in hostnames:
+        #             if hostnames[item] < count:
+        #                 has_small = True
+        #                 break
+        #         if has_small:
+        #             raws = []
+        #     else:
+        #         raws = []
+
+        app.logger.info('###########################')
         app.logger.info('[SERVICE][TRANSFER] running: {}'.format(running))
         app.logger.info('[SERVICE][TRANSFER] available: {}'.format(available))
         app.logger.info('[SERVICE][TRANSFER] queue: {}'.format(len(raws)))
