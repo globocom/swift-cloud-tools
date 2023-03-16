@@ -37,8 +37,13 @@ class SynchronizeProjects():
         self.project_id = project_id
         self.project_name = None
         self.hostname = hostname
+        self.mysql_retry = 4
 
-        while True:
+        self.app = create_app(f'config/{os.environ.get("FLASK_CONFIG")}_config.py')
+        ctx = self.app.app_context()
+        ctx.push()
+
+        for count in range(self.mysql_retry):
             try:
                 self.transfer_object = TransferProject.find_transfer_project(project_id)
                 break
@@ -51,14 +56,13 @@ class SynchronizeProjects():
         self.keystone = Keystone()
         self.conn = self.keystone.get_keystone_connection()
         self.swift = Swift(self.conn, project_id)
-        self.FLUSH_OBJECT = int(os.environ.get("FLUSH_OBJECT", "1000"))
 
     def synchronize(self, project_id, hostname):
         """Get project in swift."""
 
         self.project_id = project_id
-        self.flush_object = self.FLUSH_OBJECT
         self.hostname = hostname
+        self.mysql_retry = 4
 
         self.app = create_app('config/{}_config.py'.format(os.environ.get("FLASK_CONFIG")))
         ctx = self.app.app_context()
@@ -70,10 +74,10 @@ class SynchronizeProjects():
         session.mount('http://', adapter)
 
         google = Google()
-        transfer = Transfer()
+        transfer = Transfer(folders={})
         resume = False
 
-        while True:
+        for count in range(self.mysql_retry):
             try:
                 transfer_object = TransferProject.find_transfer_project(project_id)
                 break
@@ -159,7 +163,7 @@ class SynchronizeProjects():
                 else:
                     account_stat, containers = self.swift.get_account()
             except AuthorizationFailure:
-                app.logger.error("[{}] 500 GET account 'AUTH_{}': Keystone authorization failure".format(
+                self.app.logger.error("[{}] 500 GET account 'AUTH_{}': Keystone authorization failure".format(
                     transfer_object.project_name,
                     project_id
                 ))
@@ -182,7 +186,7 @@ class SynchronizeProjects():
         bytes_used = int(account_stat.get('x-account-bytes-used', 0))
 
         if not resume:
-            while True:
+            for count in range(self.mysql_retry):
                 try:
                     transfer_object.container_count_swift = container_count
                     transfer_object.object_count_swift = object_count
@@ -256,7 +260,7 @@ class SynchronizeProjects():
 
                 for i in range(len(threads)):
                     time.sleep(0.5)
-                    threads[i] = Thread(target=self.send_container, args=(self.app, storage_client, parts[i], transfer, transfer_object, results, counts, i))
+                    threads[i] = Thread(target=self.send_container, args=(storage_client, parts[i], transfer, transfer_object, results, counts, i))
                     threads[i].start()
                 for i in range(len(threads)):
                     threads[i].join()
@@ -264,8 +268,7 @@ class SynchronizeProjects():
                     time.sleep(0.1)
                     transfer.container_count_gcp += counts[i]
 
-                    count = 0
-                    while True:
+                    for count in range(self.mysql_retry):
                         try:
                             if count == 0:
                                 db.session.begin()
@@ -279,9 +282,8 @@ class SynchronizeProjects():
                                 err
                             ))
                             time.sleep(5)
-                            count += 1
 
-                    while True:
+                    for count in range(self.mysql_retry):
                         try:
                             labels = bucket.labels
                             labels['container-count'] = transfer.container_count_gcp
@@ -309,7 +311,7 @@ class SynchronizeProjects():
                         self.swift = Swift(self.conn, project_id)
                         account_stat, containers_copy = self.swift.get_account(marker=containers_copy[-1].get('name'))
                     except AuthorizationFailure:
-                        app.logger.error("[{}] 500 Get account 'AUTH_{}': Keystone authorization failure".format(
+                        self.app.logger.error("[{}] 500 Get account 'AUTH_{}': Keystone authorization failure".format(
                             transfer_object.project_name,
                             project_id
                         ))
@@ -365,7 +367,7 @@ class SynchronizeProjects():
 
         for i in range(len(threads)):
             time.sleep(0.5)
-            threads[i] = Thread(target=self.send_object, args=(self.app, parts[i], bucket, transfer, transfer_object, results, i))
+            threads[i] = Thread(target=self.send_object, args=(parts[i], bucket, transfer, transfer_object, results, i))
             threads[i].start()
         for i in range(len(threads)):
             threads[i].join()
@@ -375,6 +377,66 @@ class SynchronizeProjects():
                 transfer_object.project_name, i,
                 result
             ))
+
+        for count in range(self.mysql_retry):
+            try:
+                if count == 0:
+                    db.session.begin()
+                transfer_project = db.session.query(TransferProject).filter_by(project_id=transfer_object.project_id).first()
+                transfer_project.last_object = transfer.last_object
+                transfer_project.count_error = TransferProject.count_error + transfer.count_error
+                transfer_project.object_count_gcp = TransferProject.object_count_gcp + transfer.object_count_gcp
+                transfer_project.bytes_used_gcp = TransferProject.bytes_used_gcp + transfer.bytes_used_gcp
+                time.sleep(0.1)
+                db.session.commit()
+                break
+            except Exception as err:
+                self.app.logger.error("[synchronize] 500 Flush object 'mysql': {}".format(
+                    err
+                ))
+                time.sleep(5)
+        self.app.logger.info('commit.......')
+
+        for count in range(self.mysql_retry):
+            try:
+                labels = bucket.labels
+                labels['object-count'] = transfer.object_count_gcp
+                labels['bytes-used'] = transfer.bytes_used_gcp
+                bucket.labels = labels
+                time.sleep(2)
+                deadline = Retry(deadline=60)
+                bucket.patch(timeout=60, retry=deadline)
+                break
+            except Exception as err:
+                self.app.logger.error("[synchronize] 500 Flush object 'bucket': {}".format(
+                    err
+                ))
+                time.sleep(5)
+        self.app.logger.info('patch labels.......')
+
+        for folder in transfer.folders:
+            item = transfer.folders.get(folder)
+            time.sleep(1)
+
+            for count in range(self.mysql_retry):
+                try:
+                    blob = bucket.get_blob(folder + '/')
+                    metadata = blob.metadata or {}
+                    object_count_meta = int(metadata.get('object-count', 0))
+                    bytes_used_meta = int(metadata.get('bytes-used', 0))
+                    metadata['object-count'] = object_count_meta + item.get('object-count')
+                    metadata['bytes-used'] = bytes_used_meta + item.get('bytes-used')
+                    blob.metadata = metadata
+                    time.sleep(0.1)
+                    deadline = Retry(deadline=60)
+                    blob.patch(timeout=10, retry=deadline)
+                    break
+                except Exception as err:
+                    self.app.logger.error("[synchronize] 500 Save 'bucket': {}".format(
+                        err
+                    ))
+                    time.sleep(5)
+        self.app.logger.info('patch metadata.......')
 
         status, msg = self.swift.set_account_meta_cloud_migration()
 
@@ -389,8 +451,13 @@ class SynchronizeProjects():
         if status != 204:
             return Response(msg, mimetype="text/plain", status=status)
 
+        return
 
-    def send_container(self, app, storage_client, containers, transfer, transfer_object, result, counts, index):
+
+    def send_container(self, storage_client, containers, transfer, transfer_object, result, counts, index):
+        ctx = self.app.app_context()
+        ctx.push()
+
         error = False
         container_name = None
         account = 'auth_{}'.format(self.project_id)
@@ -407,7 +474,7 @@ class SynchronizeProjects():
                     timeout=30
                 )
             except Exception as err:
-                app.logger.error("[{}] 500 Get bucket '{}': {}".format(
+                self.app.logger.error("[{}] 500 Get bucket '{}': {}".format(
                     self.project_name,
                     account,
                     err
@@ -419,13 +486,13 @@ class SynchronizeProjects():
                     timeout=30
                 )
             except Exception as err:
-                app.logger.error("[{}] 504 Get bucket '{}': {}".format(
+                self.app.logger.error("[{}] 504 Get bucket '{}': {}".format(
                     self.project_name,
                     account,
                     err
                 ))
         except Exception as err:
-            app.logger.error('[{}] 500 GET bucket: {}'.format(
+            self.app.logger.error('[{}] 500 GET bucket: {}'.format(
                 self.project_name,
                 err
             ))
@@ -440,13 +507,13 @@ class SynchronizeProjects():
                     self.swift = Swift(self.conn, self.project_id)
                     meta, objects = self.swift.get_container(container_name)
                 except AuthorizationFailure:
-                    app.logger.error("[{}] 500 Get container '{}': Keystone authorization failure".format(
+                    self.app.logger.error("[{}] 500 Get container '{}': Keystone authorization failure".format(
                         self.project_name,
                         container_name
                     ))
                     error = True
                 except Exception as err:
-                    app.logger.error("[{}] 500 Get container '{}': {}".format(
+                    self.app.logger.error("[{}] 500 Get container '{}': {}".format(
                         self.project_name,
                         container_name,
                         err
@@ -456,14 +523,14 @@ class SynchronizeProjects():
                 try:
                     meta, objects = self.swift.get_container(container_name)
                 except Exception as e:
-                    app.logger.error("[{}] 500 Get container '{}': {}".format(
+                    self.app.logger.error("[{}] 500 Get container '{}': {}".format(
                         self.project_name,
                         container_name,
                         err
                     ))
                     error = True
             except Exception as err:
-                app.logger.error("[{}] 500 Get container '{}': {}".format(
+                self.app.logger.error("[{}] 500 Get container '{}': {}".format(
                     self.project_name,
                     container_name,
                     err
@@ -507,18 +574,18 @@ class SynchronizeProjects():
                         num_retries=3,
                         timeout=30
                     )
-                    app.logger.info("[{}] 201 PUT container '{}': Created".format(
+                    self.app.logger.info("[{}] 201 PUT container '{}': Created".format(
                         self.project_name,
                         container_name
                     ))
                     counts[index] += 1
                 except BadRequest:
                     transfer.count_error += 1
-                    app.logger.error("[{}] 400 PUT container '{}': BadRequest".format(
+                    self.app.logger.error("[{}] 400 PUT container '{}': BadRequest".format(
                         self.project_name,
                         container_name
                     ))
-                    while True:
+                    for count in range(self.mysql_retry):
                         try:
                             transfer_error = TransferProjectError(
                                 object_error=container_name,
@@ -534,11 +601,11 @@ class SynchronizeProjects():
                             time.sleep(5)
                 except requests.exceptions.ReadTimeout:
                     transfer.count_error += 1
-                    app.logger.error("[{}] 504 PUT container '{}': ReadTimeout".format(
+                    self.app.logger.error("[{}] 504 PUT container '{}': ReadTimeout".format(
                         self.project_name,
                         container_name
                     ))
-                    while True:
+                    for count in range(self.mysql_retry):
                         try:
                             transfer_error = TransferProjectError(
                                 object_error=container_name,
@@ -554,12 +621,12 @@ class SynchronizeProjects():
                             time.sleep(5)
                 except Exception as err:
                     transfer.count_error += 1
-                    app.logger.error("[{}] 500 PUT container '{}': {}".format(
+                    self.app.logger.error("[{}] 500 PUT container '{}': {}".format(
                         self.project_name,
                         container_name,
                         err
                     ))
-                    while True:
+                    for count in range(self.mysql_retry):
                         try:
                             transfer_error = TransferProjectError(
                                 object_error=container_name,
@@ -574,21 +641,21 @@ class SynchronizeProjects():
                             ))
                             time.sleep(5)
 
-        app.logger.info('send_container.....')
+        self.app.logger.info('send_container.....')
         time.sleep(0.1)
         result[index] = 'ok'
 
 
-    def send_object(self, app, containers, bucket, transfer, transfer_object, result, index):
-        ctx = app.app_context()
+    def send_object(self, containers, bucket, transfer, transfer_object, result, index):
+        ctx = self.app.app_context()
         ctx.push()
 
         prefix = None
         marker = None
 
         for container in containers:
-            app.logger.info('[{}] ----------'.format(transfer_object.project_name))
-            app.logger.info('[{}] Container: {}'.format(
+            self.app.logger.info('[{}] ----------'.format(transfer_object.project_name))
+            self.app.logger.info('[{}] Container: {}'.format(
                 transfer_object.project_name,
                 container.get('name')
             ))
@@ -601,20 +668,20 @@ class SynchronizeProjects():
                     self.swift = Swift(self.conn, project_id)
                     meta, objects = self.swift.get_container(container.get('name'))
                 except AuthorizationFailure:
-                    app.logger.error("[{}] 500 Get container '{}': Keystone authorization failure".format(
+                    self.app.logger.error("[{}] 500 Get container '{}': Keystone authorization failure".format(
                         transfer_object.project_name,
                         container.get('name')
                     ))
                     continue
                 except Exception as err:
-                    app.logger.error("[{}] 500 Get container '{}': {}".format(
+                    self.app.logger.error("[{}] 500 Get container '{}': {}".format(
                         transfer_object.project_name,
                         container.get('name'),
                         err
                     ))
                     continue
             except Exception as err:
-                app.logger.error("[{}] 500 Get container '{}': {}".format(
+                self.app.logger.error("[{}] 500 Get container '{}': {}".format(
                     transfer_object.project_name,
                     container.get('name'),
                     err
@@ -630,46 +697,10 @@ class SynchronizeProjects():
                     objects
                 )
 
-        app.logger.info("[{}] Finished send_object '{}'".format(
+        self.app.logger.info("[{}] Finished send_object '{}'".format(
             transfer_object.project_name,
             index
         ))
-
-        count = 0
-        while True:
-            try:
-                if count == 0:
-                    db.session.begin()
-                transfer_project = db.session.query(TransferProject).filter_by(project_id=transfer_object.project_id).first()
-                transfer_project.last_object = transfer.last_object
-                transfer_project.count_error = transfer.count_error
-                transfer_project.object_count_gcp = transfer.object_count_gcp
-                transfer_project.bytes_used_gcp = transfer.bytes_used_gcp
-                time.sleep(0.1)
-                db.session.commit()
-                break
-            except Exception as err:
-                self.app.logger.error("[synchronize] 500 Save 'mysql': {}".format(
-                    err
-                ))
-                time.sleep(5)
-                count += 1
-
-        while True:
-            try:
-                labels = bucket.labels
-                labels['object-count'] = transfer.object_count_gcp
-                labels['bytes-used'] = transfer.bytes_used_gcp
-                bucket.labels = labels
-                time.sleep(0.1)
-                deadline = Retry(deadline=60)
-                bucket.patch(timeout=60, retry=deadline)
-                break
-            except Exception as err:
-                self.app.logger.error("[synchronize] 500 Save 'bucket': {}".format(
-                    err
-                ))
-                time.sleep(5)
 
         time.sleep(0.5)
         result[index] = 'ok'
@@ -710,7 +741,7 @@ class SynchronizeProjects():
                         container,
                         prefix
                     ))
-                    while True:
+                    for count in range(self.mysql_retry):
                         try:
                             transfer_error = TransferProjectError(
                                 object_error="{}/{}".format(container, prefix),
@@ -732,7 +763,7 @@ class SynchronizeProjects():
                         container,
                         prefix
                     ))
-                    while True:
+                    for count in range(self.mysql_retry):
                         try:
                             transfer_error = TransferProjectError(
                                 object_error="{}/{}".format(container, prefix),
@@ -755,7 +786,7 @@ class SynchronizeProjects():
                         prefix,
                         err
                     ))
-                    while True:
+                    for count in range(self.mysql_retry):
                         try:
                             transfer_error = TransferProjectError(
                                 object_error="{}/{}".format(container, prefix),
@@ -772,71 +803,11 @@ class SynchronizeProjects():
                     continue
 
                 transfer.last_object = '{}/{}'.format(container, prefix)
-                self.flush_object -= 1
                 del blob
 
-                if self.flush_object <= 0:
-                    self.app.logger.info('flush_object.......')
-
-                    count = 0
-                    while True:
-                        try:
-                            if count == 0:
-                                db.session.begin()
-                            transfer_project = db.session.query(TransferProject).filter_by(project_id=transfer_object.project_id).first()
-                            transfer_project.last_object = transfer.last_object
-                            transfer_project.count_error = transfer.count_error
-                            transfer_project.object_count_gcp = transfer.object_count_gcp
-                            transfer_project.bytes_used_gcp = transfer.bytes_used_gcp
-                            time.sleep(0.1)
-                            db.session.commit()
-                            break
-                        except Exception as err:
-                            self.app.logger.error("[synchronize] 500 Flush object 'mysql': {}".format(
-                                err
-                            ))
-                            time.sleep(5)
-                            count += 1
-                    self.app.logger.info('commit.......')
-
-                    while True:
-                        try:
-                            labels = bucket.labels
-                            labels['object-count'] = transfer.object_count_gcp
-                            labels['bytes-used'] = transfer.bytes_used_gcp
-                            bucket.labels = labels
-                            time.sleep(2)
-                            deadline = Retry(deadline=60)
-                            bucket.patch(timeout=60, retry=deadline)
-                            break
-                        except Exception as err:
-                            self.app.logger.error("[synchronize] 500 Flush object 'bucket': {}".format(
-                                err
-                            ))
-                            time.sleep(5)
-                    self.app.logger.info('patch.......')
-
-                    while True:
-                        try:
-                            blob = bucket.get_blob(container + '/')
-                            metadata = blob.metadata or {}
-                            object_count_meta = int(metadata.get('object-count', 0))
-                            bytes_used_meta = int(metadata.get('bytes-used', 0))
-                            metadata['object-count'] = object_count_meta + transfer.object_count_gcp
-                            metadata['bytes-used'] = bytes_used_meta + transfer.bytes_used_gcp
-                            blob.metadata = metadata
-                            time.sleep(0.1)
-                            deadline = Retry(deadline=60)
-                            blob.patch(timeout=10, retry=deadline)
-                            break
-                        except Exception as err:
-                            self.app.logger.error("[synchronize] 500 Save 'bucket': {}".format(
-                                err
-                            ))
-                            time.sleep(5)
-                    self.app.logger.info('patch.......')
-
-                    self.flush_object = self.FLUSH_OBJECT
+                transfer.folders[container] = {'object-count': transfer.object_count_gcp, 'bytes-used': transfer.bytes_used_gcp}
+                self.app.logger.info(f"[{transfer_object.project_name}] folders '{transfer.folders}'")
+                self.app.logger.info(f"[{transfer_object.project_name}] object_count '{transfer.object_count_gcp}'")
 
                 try:
                     meta, objects = self.swift.get_container(container, prefix=prefix)
@@ -891,7 +862,7 @@ class SynchronizeProjects():
                                 container,
                                 obj.get('name')
                             ))
-                            while True:
+                            for count in range(self.mysql_retry):
                                 try:
                                     transfer_error = TransferProjectError(
                                         object_error="{}/{}".format(container, obj.get('name')),
@@ -913,7 +884,7 @@ class SynchronizeProjects():
                                 container,
                                 obj.get('name')
                             ))
-                            while True:
+                            for count in range(self.mysql_retry):
                                 try:
                                     transfer_error = TransferProjectError(
                                         object_error="{}/{}".format(container, obj.get('name')),
@@ -936,7 +907,7 @@ class SynchronizeProjects():
                                 obj.get('name'),
                                 err
                             ))
-                            while True:
+                            for count in range(self.mysql_retry):
                                 try:
                                     transfer_error = TransferProjectError(
                                         object_error="{}/{}".format(container, obj.get('name')),
@@ -959,7 +930,7 @@ class SynchronizeProjects():
                             obj.get('name'),
                             err
                         ))
-                        while True:
+                        for count in range(self.mysql_retry):
                             try:
                                 transfer_error = TransferProjectError(
                                     object_error="{}/{}".format(container, obj.get('name')),
@@ -982,7 +953,7 @@ class SynchronizeProjects():
                             obj.get('name'),
                             err
                         ))
-                        while True:
+                        for count in range(self.mysql_retry):
                             try:
                                 transfer_error = TransferProjectError(
                                     object_error="{}/{}".format(container, obj.get('name')),
@@ -1054,7 +1025,7 @@ class SynchronizeProjects():
                             transfer_object.project_name,
                             obj_path
                         ))
-                        while True:
+                        for count in range(self.mysql_retry):
                             try:
                                 transfer_error = TransferProjectError(
                                     object_error=obj_path,
@@ -1075,7 +1046,7 @@ class SynchronizeProjects():
                             transfer_object.project_name,
                             obj_path
                         ))
-                        while True:
+                        for count in range(self.mysql_retry):
                             try:
                                 transfer_error = TransferProjectError(
                                     object_error=obj_path,
@@ -1097,7 +1068,7 @@ class SynchronizeProjects():
                             obj_path,
                             err
                         ))
-                        while True:
+                        for count in range(self.mysql_retry):
                             try:
                                 transfer_error = TransferProjectError(
                                     object_error=obj_path,
@@ -1119,67 +1090,7 @@ class SynchronizeProjects():
                     transfer.object_count_gcp += 1
                     transfer.bytes_used_gcp += obj.get('bytes')
                     transfer.last_object = '{}/{}'.format(container, obj.get('name'))
-                    self.flush_object -= 1
 
-                    if self.flush_object <= 0:
-                        self.app.logger.info('flush_object.......')
-
-                        count = 0
-                        while True:
-                            try:
-                                if count == 0:
-                                    db.session.begin()
-                                transfer_project = db.session.query(TransferProject).filter_by(project_id=transfer_object.project_id).first()
-                                transfer_project.last_object = transfer.last_object
-                                transfer_project.count_error = transfer.count_error
-                                transfer_project.object_count_gcp = transfer.object_count_gcp
-                                transfer_project.bytes_used_gcp = transfer.bytes_used_gcp
-                                time.sleep(0.3)
-                                db.session.commit()
-                                break
-                            except Exception as err:
-                                self.app.logger.error("[synchronize] 500 Flush object 'mysql': {}".format(
-                                    err
-                                ))
-                                time.sleep(5)
-                                count += 1
-                        self.app.logger.info('commit.......')
-
-                        while True:
-                            try:
-                                labels = bucket.labels
-                                labels['object-count'] = transfer.object_count_gcp
-                                labels['bytes-used'] = transfer.bytes_used_gcp
-                                bucket.labels = labels
-                                time.sleep(2)
-                                deadline = Retry(deadline=60)
-                                bucket.patch(timeout=60, retry=deadline)
-                                break
-                            except Exception as err:
-                                self.app.logger.error("[synchronize] 500 Flush object 'bucket': {}".format(
-                                    err
-                                ))
-                                time.sleep(5)
-                        self.app.logger.info('patch.......')
-
-                        while True:
-                            try:
-                                blob = bucket.get_blob(container + '/')
-                                metadata = blob.metadata or {}
-                                object_count_meta = int(metadata.get('object-count', 0))
-                                bytes_used_meta = int(metadata.get('bytes-used', 0))
-                                metadata['object-count'] = object_count_meta + transfer.object_count_gcp
-                                metadata['bytes-used'] = bytes_used_meta + transfer.bytes_used_gcp
-                                blob.metadata = metadata
-                                time.sleep(0.1)
-                                deadline = Retry(deadline=60)
-                                blob.patch(timeout=10, retry=deadline)
-                                break
-                            except Exception as err:
-                                self.app.logger.error("[synchronize] 500 Save 'bucket': {}".format(
-                                    err
-                                ))
-                                time.sleep(5)
-                        self.app.logger.info('patch.......')
-
-                        self.flush_object = self.FLUSH_OBJECT
+                    transfer.folders[container] = {'object-count': transfer.object_count_gcp, 'bytes-used': transfer.bytes_used_gcp}
+                    self.app.logger.info(f"[{transfer_object.project_name}] folders '{transfer.folders}'")
+                    self.app.logger.info(f"[{transfer_object.project_name}] object_count '{transfer.object_count_gcp}'")
