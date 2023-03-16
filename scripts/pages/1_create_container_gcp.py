@@ -48,7 +48,7 @@ bucket_location = 'SOUTHAMERICA-EAST1'
 container_count_gcp = 0
 marker = None
 
-http_conn = swift_client.http_connection(url, insecure=False, timeout=3600)
+http_conn = swift_client.http_connection(url, insecure=False, timeout=10800)
 
 account_stat, containers = swift_client.get_account(
     url,
@@ -66,24 +66,31 @@ bytes_used_dccm = int(account_stat.get('x-account-bytes-used'))
 
 def _create_containers(*containers):
     global container_count_gcp
+    http_conn_local = swift_client.http_connection(url, insecure=False, timeout=10800)
     for container in containers:
         container_name = container.get('name')
 
         if not container_name:
             continue
 
-        meta, objects = swift_client.get_container(
-            url,
-            conn.auth_token,
-            container_name,
-            delimiter=None,
-            prefix=None,
-            marker=marker,
-            full_listing=False,
-            http_conn=http_conn,
-            headers=headers,
-            limit=1
-        )
+        while True:
+            try:
+                meta, objects = swift_client.get_container(
+                    url,
+                    conn.auth_token,
+                    container_name,
+                    delimiter=None,
+                    prefix=None,
+                    marker=marker,
+                    full_listing=False,
+                    http_conn=http_conn_local,
+                    headers=headers,
+                    limit=1
+                )
+                break
+            except Exception as e:
+                print(f"Problem with container {container_name}: {e}")
+            time.sleep(1)
 
         blob = bucket.blob(container_name + '/')
         metadata = {}
@@ -163,7 +170,7 @@ except NotFound:
 
 # Para projetos com muitos containers, cria esses containers em paralelo
 if len(containers) > 300:
-    n_threads = 10
+    n_threads = 50
     parts = []
     page_size = len(containers) // n_threads
 
