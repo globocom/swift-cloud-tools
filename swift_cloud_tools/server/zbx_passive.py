@@ -37,15 +37,15 @@ class Zabbix():
 
         metrics = [passive_message_status, passive_monitor_status]
 
-        try:
-            result = zabbix_server.send(metrics)
+        # try:
+        #     result = zabbix_server.send(metrics)
 
-            try:
-                if result.failed == 0:
-                    app.logger.info('[SERVICE][ZABBIX] Passive monitoring sent successfully')
-                else:
-                    app.logger.error('[SERVICE][ZABBIX] Failed to send passive monitoring')
-            except AttributeError:
-                app.logger.error('[SERVICE][ZABBIX] Failure to verify passive monitoring return')
-        except Exception as err:
-            app.logger.error(f'[SERVICE][ZABBIX] Send passive monitoring error: {err}')
+        #     try:
+        #         if result.failed == 0:
+        #             app.logger.info('[SERVICE][ZABBIX] Passive monitoring sent successfully')
+        #         else:
+        #             app.logger.error('[SERVICE][ZABBIX] Failed to send passive monitoring')
+        #     except AttributeError:
+        #         app.logger.error('[SERVICE][ZABBIX] Failure to verify passive monitoring return')
+        # except Exception as err:
+        #     app.logger.error(f'[SERVICE][ZABBIX] Send passive monitoring error: {err}')

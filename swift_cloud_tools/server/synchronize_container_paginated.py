@@ -98,7 +98,7 @@ class SynchronizeContainersPaginated():
                 time.sleep(5)
 
         storage_client = google.get_storage_client()
-        account = 'auth_{}'.format(project_id)
+        account = f"globo-s3_{transfer_object.project_name}"
         time.sleep(int(uniform(5, 10)))
 
         try:
@@ -115,7 +115,7 @@ class SynchronizeContainersPaginated():
 
         self.app.logger.info('========================================================')
         self.app.logger.info("[{}] SET account_meta_cloud 'AUTH_{}': {}".format(
-            transfer_object.project_name,
+            account,
             project_id,
             container_name
         ))
@@ -901,27 +901,6 @@ class SynchronizeContainersPaginated():
 
                     if obj.get('last_modified'):
                         metadata['last-modified'] = obj.get('last_modified') + '+00:00'
-
-                    meta_keys = list(filter(
-                        lambda x: 'x-object-meta' in x.lower(),
-                        [*headers.keys()]
-                    ))
-
-                    reserved_keys = list(filter(
-                        lambda x: x.lower() in RESERVED_META,
-                        [*headers.keys()]
-                    ))
-
-                    for item in meta_keys:
-                        key = item.lower().split('x-object-meta-')[-1]
-                        metadata[key] = headers.get(item)
-
-                    for item in reserved_keys:
-                        key = item.lower()
-                        metadata[key] = headers.get(item)
-
-                    if len(metadata):
-                        blob.metadata = metadata
 
                     blob.upload_from_string(
                         content,

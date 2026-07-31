@@ -37,3 +37,9 @@ deploy_prod_small_transfer: ## Deploy the app to prod transfer
 
 deploy_prod_transfer: ## Deploy the app to prod transfer
 	tsuru app-deploy . -a swift-cloud-tools-transfer
+
+migration_build: ## Run migrations
+	flask db migrate
+
+migration_apply: ## Run migrate
+	flask db upgrade

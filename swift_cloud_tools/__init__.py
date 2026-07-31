@@ -24,7 +24,7 @@ def create_app(config_module=None):
     app.config.from_pyfile(config_file)
 
     db.init_app(app)
-    migrate = Migrate(app, db)
+    _ = Migrate(app, db)
 
     CORS(app, resources={r"/v1/*": {"origins": "*"}})
 
