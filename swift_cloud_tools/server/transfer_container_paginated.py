@@ -105,8 +105,8 @@ async def work():
 
         for key in threads_copy.keys():
             thread = threads_copy[key]
-            app.logger.info(f'[SERVICE][TRANSFER_CONTAINER] name: {thread.name}, isAlive: {thread.isAlive()}')
-            if not thread.isAlive():
+            app.logger.info(f'[SERVICE][TRANSFER_CONTAINER] name: {thread.name}, isAlive: {thread.is_alive()}')
+            if not thread.is_alive():
                 key_re = re.search("project_id=(.*);container_name=(.*);marker=(.*)", key)
                 project_id = key_re.group(1)
                 container_name = key_re.group(2)
@@ -132,7 +132,8 @@ async def work():
                     app.logger.info(f"[SERVICE][TRANSFER_CONTAINER] 500 Save 'mysql' stop: {err}")
                     continue
 
-        for raw in raws[:1]:
+        # for raw in raws[:1]:
+        for raw in raws:
             try:
                 try:
                     raw.initial_date = datetime.now()
@@ -154,8 +155,8 @@ async def work():
                 continue
 
         app.logger.info('[SERVICE][TRANSFER_CONTAINER] Transfer container task completed')
-        app.logger.info('[SERVICE][TRANSFER_CONTAINER] Sending passive monitoring to zabbix')
-        zabbix.send()
+        # app.logger.info('[SERVICE][TRANSFER_CONTAINER] Sending passive monitoring to zabbix')
+        # zabbix.send()
 
         await asyncio.sleep(transfer_time)
 
