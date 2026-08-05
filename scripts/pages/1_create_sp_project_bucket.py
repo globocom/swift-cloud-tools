@@ -4,6 +4,7 @@
 import time
 import sys
 import os
+import uuid
 import mysql.connector
 
 from datetime import datetime
@@ -14,7 +15,6 @@ from swift_cloud_tools import create_app
 from swiftclient import client as swift_client
 from google.api_core.exceptions import NotFound, Conflict, Forbidden
 from google.api_core.retry import Retry
-# from sqlalchemy.exc import IntegrityError
 from mysql.connector.errors import IntegrityError
 
 
@@ -64,7 +64,6 @@ cursor_transfer = cnx_transfer.cursor(buffered=True)
 
 url = f"{keystone_admin_url}/v1/AUTH_{legacy_swift_id}"
 # headers = {'X-Cloud-Bypass': '136f8e168edb41afbbad3da60d048c64'}
-# account = f"auth_{legacy_swift_id}"
 bucket_location = 'SOUTHAMERICA-EAST1'
 container_count_gcp = 0
 marker = None
@@ -140,9 +139,11 @@ def _create_containers(*containers):
 
         if applying:
             data_atual = datetime.now()
+            bucket_id = uuid.uuid4()
 
             try:
                 sql = "INSERT INTO `bucket` (" \
+                            "`id`," \
                             "`project_id`," \
                             "`name`," \
                             "`external`," \
@@ -152,12 +153,14 @@ def _create_containers(*containers):
                         ") VALUES (" \
                             "'%s'," \
                             "'%s'," \
+                            "'%s'," \
                             "%s," \
                             "'%s'," \
                             "'%s'," \
                             "'%s'" \
                         ");" % (
-                            inserted_id,
+                            bucket_id,
+                            project_id,
                             container_name,
                             read,
                             cors_origins,
@@ -227,29 +230,36 @@ if applying:
         pass
 
     try:
+        project_id = uuid.uuid4()
+
         sql = "INSERT INTO `project` (" \
+                    "`id`," \
                     "`cloud_id`," \
                     "`legacy_swift_id`," \
                     "`legacy_swift_name`," \
                     "`cloud_project_id`," \
+                    "`team`," \
                     "`created_by`" \
                 ") VALUES (" \
+                    "'%s'," \
                     "%s," \
+                    "'%s'," \
                     "'%s'," \
                     "'%s'," \
                     "'%s'," \
                     "'%s'" \
                 ");" % (
+                    project_id,
                     1,
                     legacy_swift_id,
                     legacy_swift_name,
                     cloud_project_id,
+                    'storm',
                     'admin',
                 )
         query = (sql)
         cursor.execute(query)
         cnx.commit()
-        inserted_id = cursor.lastrowid
     except IntegrityError:
         sql = "select id " \
               "from project " \
@@ -259,7 +269,7 @@ if applying:
         query = (sql)
         cursor.execute(query)
 
-        inserted_id = cursor.fetchone()[0]
+        project_id = cursor.fetchone()[0]
 
     bucket_name = f"globo-s3_{legacy_swift_name}"
 

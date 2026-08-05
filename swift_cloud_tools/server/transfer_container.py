@@ -145,7 +145,7 @@ async def work():
 
         app.logger.info('[SERVICE][TRANSFER_CONTAINER] Transfer container task completed')
         app.logger.info('[SERVICE][TRANSFER_CONTAINER] Sending passive monitoring to zabbix')
-        zabbix.send()
+        # zabbix.send()
 
         await asyncio.sleep(transfer_time)
 

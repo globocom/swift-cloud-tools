@@ -131,6 +131,8 @@ class SynchronizeContainersPaginated():
             marker
         ))
 
+        meta = {}
+
         try:
             meta, objects = self.swift.get_container(container_name, marker=marker, full_listing=False, delimiter=None)
         except requests.exceptions.ConnectionError:
