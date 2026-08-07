@@ -132,8 +132,7 @@ async def work():
                     app.logger.info(f"[SERVICE][TRANSFER_CONTAINER] 500 Save 'mysql' stop: {err}")
                     continue
 
-        # for raw in raws[:1]:
-        for raw in raws:
+        for raw in raws[:1]:
             try:
                 try:
                     raw.initial_date = datetime.now()

@@ -98,7 +98,7 @@ class SynchronizeContainersPaginated():
                 time.sleep(5)
 
         storage_client = google.get_storage_client()
-        account = f"globo-s3_{transfer_object.project_name}"
+        account = f"globo-s4_{transfer_object.project_name}"
         time.sleep(int(uniform(5, 10)))
 
         try:
@@ -114,10 +114,11 @@ class SynchronizeContainersPaginated():
             return Response(err, mimetype="text/plain", status=500)
 
         self.app.logger.info('========================================================')
-        self.app.logger.info("[{}] SET account_meta_cloud 'AUTH_{}': {}".format(
+        self.app.logger.info("[{}] Start migrate project '{}', container '{}', marker '{}'".format(
             account,
             project_id,
-            container_name
+            container_name,
+            marker
         ))
 
         ########################################

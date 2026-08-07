@@ -271,7 +271,7 @@ if applying:
 
         project_id = cursor.fetchone()[0]
 
-    bucket_name = f"globo-s3_{legacy_swift_name}"
+    bucket_name = f"globo-s4_{legacy_swift_name}"
 
     try:
         bucket = storage_client.get_bucket(
