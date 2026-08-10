@@ -23,6 +23,8 @@ class bcolors:
     BOLD = '\033[1m'
     UNDERLINE = '\033[4m'
 
+LIMIT = 10000
+
 params = sys.argv[1:]
 legacy_swift_id = params[0]
 applying = eval(params[1])
@@ -152,7 +154,7 @@ for container in containers:
             full_listing=False,
             http_conn=http_conn, 
             # headers=headers, 
-            limit=10000
+            limit=LIMIT
         )
 
         if (len(objects) > 0):
@@ -164,6 +166,9 @@ for container in containers:
                 query = (sql)
                 cursor_transfer.execute(query)
                 cnx_transfer.commit()
+
+            if (len(objects) < LIMIT):
+                break
 
             marker = objects[-1].get('name')
             # sql = f"INSERT INTO `transfer_container_paginated` (`project_id`, `project_name`, `container_name`, `marker`, `hostname`, `environment`, `object_count_swift`, `bytes_used_swift`, `count_error`, `object_count_gcp`, `bytes_used_gcp`, `initial_date`, `final_date`) VALUES ('{legacy_swift_id}', '{project_name}', '{container_name}', '{marker}', NULL, 'pages', 0, 0, 0, 0, 0, NULL, NULL);"
