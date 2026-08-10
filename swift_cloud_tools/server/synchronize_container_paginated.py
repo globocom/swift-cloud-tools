@@ -492,7 +492,7 @@ class SynchronizeContainersPaginated():
                             transfer_object.project_name,
                             container,
                             obj.get('name'),
-                            err
+                            'Object GET failure'
                         ))
                         while True:
                             try:
@@ -888,8 +888,9 @@ class SynchronizeContainersPaginated():
                             time.sleep(5)
                     continue
 
+                obj_path = "{}/{}".format(container, obj.get('name'))
+
                 try:
-                    obj_path = "{}/{}".format(container, obj.get('name'))
                     blob = bucket.blob(obj_path)
                     metadata = {}
 
