@@ -160,17 +160,18 @@ for container in containers:
         if (len(objects) > 0):
             count += 1
             print(f"{bcolors.OKGREEN}'{project_name}' - '{container_name}'{bcolors.ENDC} - {bcolors.OKCYAN}'{marker if marker else ''}'{bcolors.ENDC}")
+
             if applying:
-                # query = db.session.execute(sql)
-                # import ipdb;ipdb.set_trace()
                 query = (sql)
                 cursor_transfer.execute(query)
                 cnx_transfer.commit()
 
-            if (len(objects) < LIMIT):
-                break
-
             marker = objects[-1].get('name')
+
+            if not marker:
+                if 'subdir' in objects[-1].keys():
+                    marker = objects[-1].get('subdir')
+
             # sql = f"INSERT INTO `transfer_container_paginated` (`project_id`, `project_name`, `container_name`, `marker`, `hostname`, `environment`, `object_count_swift`, `bytes_used_swift`, `count_error`, `object_count_gcp`, `bytes_used_gcp`, `initial_date`, `final_date`) VALUES ('{legacy_swift_id}', '{project_name}', '{container_name}', '{marker}', NULL, 'pages', 0, 0, 0, 0, 0, NULL, NULL);"
             sql = "INSERT INTO `transfer_container_paginated` (" \
                         "`project_id`," \
