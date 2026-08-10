@@ -168,10 +168,6 @@ for container in containers:
 
             marker = objects[-1].get('name')
 
-            if not marker:
-                if 'subdir' in objects[-1].keys():
-                    marker = objects[-1].get('subdir')
-
             # sql = f"INSERT INTO `transfer_container_paginated` (`project_id`, `project_name`, `container_name`, `marker`, `hostname`, `environment`, `object_count_swift`, `bytes_used_swift`, `count_error`, `object_count_gcp`, `bytes_used_gcp`, `initial_date`, `final_date`) VALUES ('{legacy_swift_id}', '{project_name}', '{container_name}', '{marker}', NULL, 'pages', 0, 0, 0, 0, 0, NULL, NULL);"
             sql = "INSERT INTO `transfer_container_paginated` (" \
                         "`project_id`," \

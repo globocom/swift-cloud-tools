@@ -114,25 +114,17 @@ class SynchronizeContainersPaginated():
             return Response(err, mimetype="text/plain", status=500)
 
         self.app.logger.info('========================================================')
-        self.app.logger.info("[{}] Start migrate project '{}', container '{}', marker '{}'".format(
-            account,
+        self.app.logger.info("[{}] Start migrate project '{}', container '{}', marker '{}' to Bucket '{}'".format(
+            transfer_object.project_name,
             project_id,
             container_name,
-            marker
+            marker,
+            account
         ))
 
         ########################################
         #               Objects                #
         ########################################
-
-        self.app.logger.info('[{}] ----------'.format(transfer_object.project_name))
-        self.app.logger.info('[{}] Container: {}, Marker: {}'.format(
-            transfer_object.project_name,
-            container_name,
-            marker
-        ))
-
-        meta = {}
 
         try:
             meta, objects = self.swift.get_container(container_name, marker=marker, full_listing=False, delimiter=None)
@@ -223,33 +215,33 @@ class SynchronizeContainersPaginated():
         object_count_gcp = 0
         bytes_used_gcp = 0
 
-        #############################################
-        #      folder structure normalization       #
-        #############################################
-        self.app.logger.info("[{}] Folder structure normalization '{}', Marker '{}'".format(
-            transfer_object.project_name,
-            container_name,
-            marker
-        ))
+        # #############################################
+        # #      folder structure normalization       #
+        # #############################################
+        # self.app.logger.info("[{}] Folder structure normalization '{}', Marker '{}'".format(
+        #     transfer_object.project_name,
+        #     container_name,
+        #     marker
+        # ))
 
-        # if self.project_id in (self.unformatted):
-        transfer.folders = sorted(set(transfer.folders))
+        # # if self.project_id in (self.unformatted):
+        # transfer.folders = sorted(set(transfer.folders))
 
-        for folder in transfer.folders:
-            self.app.logger.info("[{}] folder: '{}'".format(
-                transfer_object.project_name,
-                folder
-            ))
-            blob = bucket.blob(folder)
+        # for folder in transfer.folders:
+        #     self.app.logger.info("[{}] folder: '{}'".format(
+        #         transfer_object.project_name,
+        #         folder
+        #     ))
+        #     blob = bucket.blob(folder)
 
-            blob.upload_from_string('',
-                content_type='application/directory',
-                num_retries=3,
-                timeout=30
-            )
-        #############################################
-        #      folder structure normalization       #
-        #############################################
+        #     blob.upload_from_string('',
+        #         content_type='application/directory',
+        #         num_retries=3,
+        #         timeout=30
+        #     )
+        # #############################################
+        # #      folder structure normalization       #
+        # #############################################
 
         self.app.logger.info("[{}] Save object_count and bytes_used GCP '{}', Marker '{}'".format(
             transfer_object.project_name,
@@ -492,7 +484,7 @@ class SynchronizeContainersPaginated():
                             transfer_object.project_name,
                             container,
                             obj.get('name'),
-                            'Object GET failure'
+                            err
                         ))
                         while True:
                             try:
@@ -754,18 +746,18 @@ class SynchronizeContainersPaginated():
 
                 transfer.object_count_gcp += 1
             else:
-                #############################################
-                #      folder structure normalization       #
-                #############################################
-                folder_list = obj.get('name').split('/')[:-1]
+                # #############################################
+                # #      folder structure normalization       #
+                # #############################################
+                # folder_list = obj.get('name').split('/')[:-1]
 
-                for i in range(len(folder_list)):
-                    path = '{}/{}/'.format(container, '/'.join(folder_list[:i+1]))
-                    transfer.folders.append(path)
+                # for i in range(len(folder_list)):
+                #     path = '{}/{}/'.format(container, '/'.join(folder_list[:i+1]))
+                #     transfer.folders.append(path)
 
-                #############################################
-                #      folder structure normalization       #
-                #############################################
+                # #############################################
+                # #      folder structure normalization       #
+                # #############################################
 
                 try:
                     headers, content = self.swift.get_object(container, obj.get('name'))
@@ -888,9 +880,8 @@ class SynchronizeContainersPaginated():
                             time.sleep(5)
                     continue
 
-                obj_path = "{}/{}".format(container, obj.get('name'))
-
                 try:
+                    obj_path = "{}/{}".format(container, obj.get('name'))
                     blob = bucket.blob(obj_path)
                     metadata = {}
 
