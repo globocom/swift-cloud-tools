@@ -32,6 +32,7 @@ def create_app(config_module=None):
 
     handler = RotatingFileHandler('swift-cloud-tools.log', maxBytes=52428800, backupCount=1)
     handler.setLevel(logging.INFO)
+    logging.getLogger("urllib3.connectionpool").setLevel(logging.ERROR)
     logging.basicConfig(
         level=logging.INFO,
         format='%(asctime)s %(levelname)s %(message)s'

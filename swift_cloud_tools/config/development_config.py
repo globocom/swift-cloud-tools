@@ -20,6 +20,7 @@ KEYSTONE_ADMIN_URL = os.environ.get("KEYSTONE_ADMIN_URL")
 
 API_KEY = os.environ.get("API_KEY", "toolsapikey")
 X_CLOUD_BYPASS = os.environ.get("X_CLOUD_BYPASS", "xcloudbypass")
+RESP_CHUNK_SIZE = int(os.environ.get("RESP_CHUNK_SIZE", "262144"))
 
 FE_HOSTS = os.environ.get("FE_HOSTS")
 PROMETHEUS_URL = os.environ.get("PROMETHEUS_URL")

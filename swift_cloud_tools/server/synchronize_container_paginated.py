@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 import itertools
 import requests
+import tempfile
 import time
 import json
 import os
@@ -42,10 +43,13 @@ class SynchronizeContainersPaginated():
         self.marker = marker
         self.hostname = hostname
         # self.unformatted = json.loads(os.environ.get("UNFORMATTED"))
+        self.bucket_suffix = os.environ.get('BUCKET_SUFFIX')
 
         self.app = create_app('config/{}_config.py'.format(os.environ.get("FLASK_CONFIG")))
         ctx = self.app.app_context()
         ctx.push()
+
+        self.resp_chunk_size = self.app.config.get('RESP_CHUNK_SIZE')
 
         while True:
             try:
@@ -98,7 +102,7 @@ class SynchronizeContainersPaginated():
                 time.sleep(5)
 
         storage_client = google.get_storage_client()
-        account = f"globo-s4_{transfer_object.project_name}"
+        account = f"{transfer_object.project_name}__{self.bucket_suffix}"
         time.sleep(int(uniform(5, 10)))
 
         try:
@@ -303,349 +307,349 @@ class SynchronizeContainersPaginated():
         return
 
 
-    def _get_container(self, app, storage_client, account, container, transfer, transfer_object, transfer_container_paginated, objects):
-        ctx = app.app_context()
-        ctx.push()
+    # def _get_container(self, app, storage_client, account, container, transfer, transfer_object, transfer_container_paginated, objects):
+    #     ctx = app.app_context()
+    #     ctx.push()
 
-        bucket = storage_client.get_bucket(
-            account,
-            timeout=30
-        )
+    #     bucket = storage_client.get_bucket(
+    #         account,
+    #         timeout=30
+    #     )
 
-        for obj in objects:
-            if obj.get('content_type') == "application/directory" and \
-                len(obj.get('name', '')) > 0 and obj.get('name','')[-1] == "/":
+    #     for obj in objects:
+    #         if obj.get('content_type') == "application/directory" and \
+    #             len(obj.get('name', '')) > 0 and obj.get('name','')[-1] == "/":
 
-                prefix = obj.get('name')
-                blob = bucket.blob('{}/{}'.format(container, prefix))
+    #             prefix = obj.get('name')
+    #             blob = bucket.blob('{}/{}'.format(container, prefix))
 
-                try:
-                    blob.upload_from_string('',
-                        content_type='application/directory',
-                        num_retries=3,
-                        timeout=30
-                    )
-                    app.logger.info("[{}] 201 PUT folder '{}/{}': Created".format(
-                        transfer_object.project_name,
-                        container,
-                        prefix
-                    ))
-                except BadRequest:
-                    transfer.count_error += 1
-                    app.logger.error("[{}] 400 PUT folder '{}/{}': BadRequest".format(
-                        transfer_object.project_name,
-                        container,
-                        prefix
-                    ))
-                    while True:
-                        try:
-                            transfer_error = TransferContainerPaginatedError(
-                                object_error="{}/{}".format(container, prefix),
-                                transfer_container_paginated_id=transfer_container_paginated.id,
-                                created=datetime.now()
-                            )
-                            transfer_error.save()
-                            break
-                        except Exception as err:
-                            app.logger.error("[synchronize] 500 Save 'mysql': {}".format(
-                                err
-                            ))
-                            time.sleep(5)
-                    continue
-                except requests.exceptions.ReadTimeout:
-                    transfer.count_error += 1
-                    app.logger.error("[{}] 504 PUT folder '{}/{}': ReadTimeout".format(
-                        transfer_object.project_name,
-                        container,
-                        prefix
-                    ))
-                    while True:
-                        try:
-                            transfer_error = TransferContainerPaginatedError(
-                                object_error="{}/{}".format(container, prefix),
-                                transfer_container_paginated_id=transfer_container_paginated.id,
-                                created=datetime.now()
-                            )
-                            transfer_error.save()
-                            break
-                        except Exception as err:
-                            app.logger.error("[synchronize] 500 Save 'mysql': {}".format(
-                                err
-                            ))
-                            time.sleep(5)
-                    continue
-                except Exception as err:
-                    transfer.count_error += 1
-                    app.logger.error("[{}] 500 PUT folder '{}/{}': {}".format(
-                        transfer_object.project_name,
-                        container,
-                        prefix,
-                        err
-                    ))
-                    while True:
-                        try:
-                            transfer_error = TransferContainerPaginatedError(
-                                object_error="{}/{}".format(container, prefix),
-                                transfer_container_paginated_id=transfer_container_paginated.id,
-                                created=datetime.now()
-                            )
-                            transfer_error.save()
-                            break
-                        except Exception as err:
-                            app.logger.error("[synchronize] 500 Save 'mysql': {}".format(
-                                err
-                            ))
-                            time.sleep(5)
-                    continue
+    #             try:
+    #                 blob.upload_from_string('',
+    #                     content_type='application/directory',
+    #                     num_retries=3,
+    #                     timeout=30
+    #                 )
+    #                 app.logger.info("[{}] 201 PUT folder '{}/{}': Created".format(
+    #                     transfer_object.project_name,
+    #                     container,
+    #                     prefix
+    #                 ))
+    #             except BadRequest:
+    #                 transfer.count_error += 1
+    #                 app.logger.error("[{}] 400 PUT folder '{}/{}': BadRequest".format(
+    #                     transfer_object.project_name,
+    #                     container,
+    #                     prefix
+    #                 ))
+    #                 while True:
+    #                     try:
+    #                         transfer_error = TransferContainerPaginatedError(
+    #                             object_error="{}/{}".format(container, prefix),
+    #                             transfer_container_paginated_id=transfer_container_paginated.id,
+    #                             created=datetime.now()
+    #                         )
+    #                         transfer_error.save()
+    #                         break
+    #                     except Exception as err:
+    #                         app.logger.error("[synchronize] 500 Save 'mysql': {}".format(
+    #                             err
+    #                         ))
+    #                         time.sleep(5)
+    #                 continue
+    #             except requests.exceptions.ReadTimeout:
+    #                 transfer.count_error += 1
+    #                 app.logger.error("[{}] 504 PUT folder '{}/{}': ReadTimeout".format(
+    #                     transfer_object.project_name,
+    #                     container,
+    #                     prefix
+    #                 ))
+    #                 while True:
+    #                     try:
+    #                         transfer_error = TransferContainerPaginatedError(
+    #                             object_error="{}/{}".format(container, prefix),
+    #                             transfer_container_paginated_id=transfer_container_paginated.id,
+    #                             created=datetime.now()
+    #                         )
+    #                         transfer_error.save()
+    #                         break
+    #                     except Exception as err:
+    #                         app.logger.error("[synchronize] 500 Save 'mysql': {}".format(
+    #                             err
+    #                         ))
+    #                         time.sleep(5)
+    #                 continue
+    #             except Exception as err:
+    #                 transfer.count_error += 1
+    #                 app.logger.error("[{}] 500 PUT folder '{}/{}': {}".format(
+    #                     transfer_object.project_name,
+    #                     container,
+    #                     prefix,
+    #                     err
+    #                 ))
+    #                 while True:
+    #                     try:
+    #                         transfer_error = TransferContainerPaginatedError(
+    #                             object_error="{}/{}".format(container, prefix),
+    #                             transfer_container_paginated_id=transfer_container_paginated.id,
+    #                             created=datetime.now()
+    #                         )
+    #                         transfer_error.save()
+    #                         break
+    #                     except Exception as err:
+    #                         app.logger.error("[synchronize] 500 Save 'mysql': {}".format(
+    #                             err
+    #                         ))
+    #                         time.sleep(5)
+    #                 continue
 
-                del blob
-                gc.collect()
+    #             del blob
+    #             gc.collect()
 
-                transfer.object_count_gcp += 1
-            else:
-                if obj.get('content_type') != 'application/directory':
-                    try:
-                        headers, content = self.swift.get_object(container, obj.get('name'))
-                    except requests.exceptions.ConnectionError:
-                        try:
-                            self.conn = self.keystone.get_keystone_connection()
-                            self.swift = Swift(self.conn, self.project_id)
-                            headers, content = self.swift.get_object(container, obj.get('name'))
-                        except IncompleteRead:
-                            transfer.count_error += 1
-                            app.logger.error("[{}] 500 Get object '{}/{}': Keystone authorization failure".format(
-                                transfer_object.project_name,
-                                container,
-                                obj.get('name')
-                            ))
-                            while True:
-                                try:
-                                    transfer_error = TransferContainerPaginatedError(
-                                        object_error="{}/{}".format(container, obj.get('name')),
-                                        transfer_container_paginated_id=transfer_container_paginated.id,
-                                        created=datetime.now()
-                                    )
-                                    transfer_error.save()
-                                    break
-                                except Exception as err:
-                                    app.logger.error("[synchronize] 500 Save 'mysql': {}".format(
-                                        err
-                                    ))
-                                    time.sleep(5)
-                            continue
-                        except AuthorizationFailure:
-                            transfer.count_error += 1
-                            app.logger.error("[{}] 500 Get object '{}/{}': Keystone authorization failure".format(
-                                transfer_object.project_name,
-                                container,
-                                obj.get('name')
-                            ))
-                            while True:
-                                try:
-                                    transfer_error = TransferContainerPaginatedError(
-                                        object_error="{}/{}".format(container, obj.get('name')),
-                                        transfer_container_paginated_id=transfer_container_paginated.id,
-                                        created=datetime.now()
-                                    )
-                                    transfer_error.save()
-                                    break
-                                except Exception as err:
-                                    app.logger.error("[synchronize] 500 Save 'mysql': {}".format(
-                                        err
-                                    ))
-                                    time.sleep(5)
-                            continue
-                        except Exception as err:
-                            transfer.count_error += 1
-                            app.logger.error("[{}] 500 Get object '{}/{}': {}".format(
-                                transfer_object.project_name,
-                                container,
-                                obj.get('name'),
-                                err
-                            ))
-                            while True:
-                                try:
-                                    transfer_error = TransferContainerPaginatedError(
-                                        object_error="{}/{}".format(container, obj.get('name')),
-                                        transfer_container_paginated_id=transfer_container_paginated.id,
-                                        created=datetime.now()
-                                    )
-                                    transfer_error.save()
-                                    break
-                                except Exception as err:
-                                    app.logger.error("[synchronize] 500 Save 'mysql': {}".format(
-                                        err
-                                    ))
-                                    time.sleep(5)
-                            continue
-                    except IncompleteRead:
-                        transfer.count_error += 1
-                        app.logger.error("[{}] 500 Get object '{}/{}': {}".format(
-                            transfer_object.project_name,
-                            container,
-                            obj.get('name'),
-                            err
-                        ))
-                        while True:
-                            try:
-                                transfer_error = TransferContainerPaginatedError(
-                                    object_error="{}/{}".format(container, obj.get('name')),
-                                    transfer_container_paginated_id=transfer_container_paginated.id,
-                                    created=datetime.now()
-                                )
-                                transfer_error.save()
-                                break
-                            except Exception as err:
-                                app.logger.error("[synchronize] 500 Save 'mysql': {}".format(
-                                    err
-                                ))
-                                time.sleep(5)
-                        continue
-                    except Exception as err:
-                        transfer.count_error += 1
-                        app.logger.error("[{}] 500 Get object '{}/{}': {}".format(
-                            transfer_object.project_name,
-                            container,
-                            obj.get('name'),
-                            err
-                        ))
-                        while True:
-                            try:
-                                transfer_error = TransferContainerPaginatedError(
-                                    object_error="{}/{}".format(container, obj.get('name')),
-                                    transfer_container_paginated_id=transfer_container_paginated.id,
-                                    created=datetime.now()
-                                )
-                                transfer_error.save()
-                                break
-                            except Exception as err:
-                                app.logger.error("[synchronize] 500 Save 'mysql': {}".format(
-                                    err
-                                ))
-                                time.sleep(5)
-                        continue
+    #             transfer.object_count_gcp += 1
+    #         else:
+    #             if obj.get('content_type') != 'application/directory':
+    #                 try:
+    #                     headers, content = self.swift.get_object(container, obj.get('name'))
+    #                 except requests.exceptions.ConnectionError:
+    #                     try:
+    #                         self.conn = self.keystone.get_keystone_connection()
+    #                         self.swift = Swift(self.conn, self.project_id)
+    #                         headers, content = self.swift.get_object(container, obj.get('name'))
+    #                     except IncompleteRead:
+    #                         transfer.count_error += 1
+    #                         app.logger.error("[{}] 500 Get object '{}/{}': Keystone authorization failure".format(
+    #                             transfer_object.project_name,
+    #                             container,
+    #                             obj.get('name')
+    #                         ))
+    #                         while True:
+    #                             try:
+    #                                 transfer_error = TransferContainerPaginatedError(
+    #                                     object_error="{}/{}".format(container, obj.get('name')),
+    #                                     transfer_container_paginated_id=transfer_container_paginated.id,
+    #                                     created=datetime.now()
+    #                                 )
+    #                                 transfer_error.save()
+    #                                 break
+    #                             except Exception as err:
+    #                                 app.logger.error("[synchronize] 500 Save 'mysql': {}".format(
+    #                                     err
+    #                                 ))
+    #                                 time.sleep(5)
+    #                         continue
+    #                     except AuthorizationFailure:
+    #                         transfer.count_error += 1
+    #                         app.logger.error("[{}] 500 Get object '{}/{}': Keystone authorization failure".format(
+    #                             transfer_object.project_name,
+    #                             container,
+    #                             obj.get('name')
+    #                         ))
+    #                         while True:
+    #                             try:
+    #                                 transfer_error = TransferContainerPaginatedError(
+    #                                     object_error="{}/{}".format(container, obj.get('name')),
+    #                                     transfer_container_paginated_id=transfer_container_paginated.id,
+    #                                     created=datetime.now()
+    #                                 )
+    #                                 transfer_error.save()
+    #                                 break
+    #                             except Exception as err:
+    #                                 app.logger.error("[synchronize] 500 Save 'mysql': {}".format(
+    #                                     err
+    #                                 ))
+    #                                 time.sleep(5)
+    #                         continue
+    #                     except Exception as err:
+    #                         transfer.count_error += 1
+    #                         app.logger.error("[{}] 500 Get object '{}/{}': {}".format(
+    #                             transfer_object.project_name,
+    #                             container,
+    #                             obj.get('name'),
+    #                             err
+    #                         ))
+    #                         while True:
+    #                             try:
+    #                                 transfer_error = TransferContainerPaginatedError(
+    #                                     object_error="{}/{}".format(container, obj.get('name')),
+    #                                     transfer_container_paginated_id=transfer_container_paginated.id,
+    #                                     created=datetime.now()
+    #                                 )
+    #                                 transfer_error.save()
+    #                                 break
+    #                             except Exception as err:
+    #                                 app.logger.error("[synchronize] 500 Save 'mysql': {}".format(
+    #                                     err
+    #                                 ))
+    #                                 time.sleep(5)
+    #                         continue
+    #                 except IncompleteRead:
+    #                     transfer.count_error += 1
+    #                     app.logger.error("[{}] 500 Get object '{}/{}': {}".format(
+    #                         transfer_object.project_name,
+    #                         container,
+    #                         obj.get('name'),
+    #                         err
+    #                     ))
+    #                     while True:
+    #                         try:
+    #                             transfer_error = TransferContainerPaginatedError(
+    #                                 object_error="{}/{}".format(container, obj.get('name')),
+    #                                 transfer_container_paginated_id=transfer_container_paginated.id,
+    #                                 created=datetime.now()
+    #                             )
+    #                             transfer_error.save()
+    #                             break
+    #                         except Exception as err:
+    #                             app.logger.error("[synchronize] 500 Save 'mysql': {}".format(
+    #                                 err
+    #                             ))
+    #                             time.sleep(5)
+    #                     continue
+    #                 except Exception as err:
+    #                     transfer.count_error += 1
+    #                     app.logger.error("[{}] 500 Get object '{}/{}': {}".format(
+    #                         transfer_object.project_name,
+    #                         container,
+    #                         obj.get('name'),
+    #                         err
+    #                     ))
+    #                     while True:
+    #                         try:
+    #                             transfer_error = TransferContainerPaginatedError(
+    #                                 object_error="{}/{}".format(container, obj.get('name')),
+    #                                 transfer_container_paginated_id=transfer_container_paginated.id,
+    #                                 created=datetime.now()
+    #                             )
+    #                             transfer_error.save()
+    #                             break
+    #                         except Exception as err:
+    #                             app.logger.error("[synchronize] 500 Save 'mysql': {}".format(
+    #                                 err
+    #                             ))
+    #                             time.sleep(5)
+    #                     continue
 
-                    try:
-                        obj_path = "{}/{}".format(container, obj.get('name'))
-                        blob = bucket.blob(obj_path)
-                        metadata = {}
+    #                 try:
+    #                     obj_path = "{}/{}".format(container, obj.get('name'))
+    #                     blob = bucket.blob(obj_path)
+    #                     metadata = {}
 
-                        if headers.get('cache-control'):
-                            blob.cache_control = headers.get('cache-control')
+    #                     if headers.get('cache-control'):
+    #                         blob.cache_control = headers.get('cache-control')
 
-                        if headers.get('content-encoding'):
-                            metadata['content-encoding'] = headers.get('content-encoding')
+    #                     if headers.get('content-encoding'):
+    #                         metadata['content-encoding'] = headers.get('content-encoding')
 
-                        if headers.get('content-disposition'):
-                            blob.content_disposition = headers.get('content-disposition')
+    #                     if headers.get('content-disposition'):
+    #                         blob.content_disposition = headers.get('content-disposition')
 
-                        if obj.get('last_modified'):
-                            metadata['last-modified'] = obj.get('last_modified') + '+00:00'
+    #                     if obj.get('last_modified'):
+    #                         metadata['last-modified'] = obj.get('last_modified') + '+00:00'
 
-                        meta_keys = list(filter(
-                            lambda x: 'x-object-meta' in x.lower(),
-                            [*headers.keys()]
-                        ))
+    #                     meta_keys = list(filter(
+    #                         lambda x: 'x-object-meta' in x.lower(),
+    #                         [*headers.keys()]
+    #                     ))
 
-                        reserved_keys = list(filter(
-                            lambda x: x.lower() in RESERVED_META,
-                            [*headers.keys()]
-                        ))
+    #                     reserved_keys = list(filter(
+    #                         lambda x: x.lower() in RESERVED_META,
+    #                         [*headers.keys()]
+    #                     ))
 
-                        for item in meta_keys:
-                            key = item.lower().split('x-object-meta-')[-1]
-                            metadata[key] = headers.get(item)
+    #                     for item in meta_keys:
+    #                         key = item.lower().split('x-object-meta-')[-1]
+    #                         metadata[key] = headers.get(item)
 
-                        for item in reserved_keys:
-                            key = item.lower()
-                            metadata[key] = headers.get(item)
+    #                     for item in reserved_keys:
+    #                         key = item.lower()
+    #                         metadata[key] = headers.get(item)
 
-                        if len(metadata):
-                            blob.metadata = metadata
+    #                     if len(metadata):
+    #                         blob.metadata = metadata
 
-                        blob.upload_from_string(
-                            content,
-                            content_type=obj.get('content_type'),
-                            num_retries=3,
-                            timeout=900
-                        )
-                        app.logger.info("[{}] 201 PUT object '{}' {} {}: Created".format(
-                            transfer_object.project_name,
-                            obj_path,
-                            obj.get('content_type'),
-                            len(content)
-                        ))
-                    except BadRequest:
-                        transfer.count_error += 1
-                        app.logger.error("[{}] 400 PUT object '{}' {}: BadRequest".format(
-                            transfer_object.project_name,
-                            obj_path
-                        ))
-                        while True:
-                            try:
-                                transfer_error = TransferContainerPaginatedError(
-                                    object_error=obj_path,
-                                    transfer_container_paginated_id=transfer_container_paginated.id,
-                                    created=datetime.now()
-                                )
-                                transfer_error.save()
-                                break
-                            except Exception as err:
-                                app.logger.error("[synchronize] 500 Save 'mysql': {}".format(
-                                    err
-                                ))
-                                time.sleep(5)
-                        continue
-                    except requests.exceptions.ReadTimeout:
-                        transfer.count_error += 1
-                        app.logger.error("[{}] 504 PUT object '{}' {}: ReadTimeout".format(
-                            transfer_object.project_name,
-                            obj_path
-                        ))
-                        while True:
-                            try:
-                                transfer_error = TransferContainerPaginatedError(
-                                    object_error=obj_path,
-                                    transfer_container_paginated_id=transfer_container_paginated.id,
-                                    created=datetime.now()
-                                )
-                                transfer_error.save()
-                                break
-                            except Exception as err:
-                                app.logger.error("[synchronize] 500 Save 'mysql': {}".format(
-                                    err
-                                ))
-                                time.sleep(5)
-                        continue
-                    except Exception as err:
-                        transfer.count_error += 1
-                        app.logger.error("[{}] 500 PUT object '{}': {}".format(
-                            transfer_object.project_name,
-                            obj_path,
-                            err
-                        ))
-                        while True:
-                            try:
-                                transfer_error = TransferContainerPaginatedError(
-                                    object_error=obj_path,
-                                    transfer_container_paginated_id=transfer_container_paginated.id,
-                                    created=datetime.now()
-                                )
-                                transfer_error.save()
-                                break
-                            except Exception as err:
-                                app.logger.error("[synchronize] 500 Save 'mysql': {}".format(
-                                    err
-                                ))
-                                time.sleep(5)
-                        continue
+    #                     blob.upload_from_string(
+    #                         content,
+    #                         content_type=obj.get('content_type'),
+    #                         num_retries=3,
+    #                         timeout=900
+    #                     )
+    #                     app.logger.info("[{}] 201 PUT object '{}' {} {}: Created".format(
+    #                         transfer_object.project_name,
+    #                         obj_path,
+    #                         obj.get('content_type'),
+    #                         len(content)
+    #                     ))
+    #                 except BadRequest:
+    #                     transfer.count_error += 1
+    #                     app.logger.error("[{}] 400 PUT object '{}' {}: BadRequest".format(
+    #                         transfer_object.project_name,
+    #                         obj_path
+    #                     ))
+    #                     while True:
+    #                         try:
+    #                             transfer_error = TransferContainerPaginatedError(
+    #                                 object_error=obj_path,
+    #                                 transfer_container_paginated_id=transfer_container_paginated.id,
+    #                                 created=datetime.now()
+    #                             )
+    #                             transfer_error.save()
+    #                             break
+    #                         except Exception as err:
+    #                             app.logger.error("[synchronize] 500 Save 'mysql': {}".format(
+    #                                 err
+    #                             ))
+    #                             time.sleep(5)
+    #                     continue
+    #                 except requests.exceptions.ReadTimeout:
+    #                     transfer.count_error += 1
+    #                     app.logger.error("[{}] 504 PUT object '{}' {}: ReadTimeout".format(
+    #                         transfer_object.project_name,
+    #                         obj_path
+    #                     ))
+    #                     while True:
+    #                         try:
+    #                             transfer_error = TransferContainerPaginatedError(
+    #                                 object_error=obj_path,
+    #                                 transfer_container_paginated_id=transfer_container_paginated.id,
+    #                                 created=datetime.now()
+    #                             )
+    #                             transfer_error.save()
+    #                             break
+    #                         except Exception as err:
+    #                             app.logger.error("[synchronize] 500 Save 'mysql': {}".format(
+    #                                 err
+    #                             ))
+    #                             time.sleep(5)
+    #                     continue
+    #                 except Exception as err:
+    #                     transfer.count_error += 1
+    #                     app.logger.error("[{}] 500 PUT object '{}': {}".format(
+    #                         transfer_object.project_name,
+    #                         obj_path,
+    #                         err
+    #                     ))
+    #                     while True:
+    #                         try:
+    #                             transfer_error = TransferContainerPaginatedError(
+    #                                 object_error=obj_path,
+    #                                 transfer_container_paginated_id=transfer_container_paginated.id,
+    #                                 created=datetime.now()
+    #                             )
+    #                             transfer_error.save()
+    #                             break
+    #                         except Exception as err:
+    #                             app.logger.error("[synchronize] 500 Save 'mysql': {}".format(
+    #                                 err
+    #                             ))
+    #                             time.sleep(5)
+    #                     continue
 
-                    del content
-                    del blob
-                    gc.collect()
+    #                 del content
+    #                 del blob
+    #                 gc.collect()
 
-                    transfer.object_count_gcp += 1
-                    transfer.bytes_used_gcp += obj.get('bytes')
+    #                 transfer.object_count_gcp += 1
+    #                 transfer.bytes_used_gcp += obj.get('bytes')
 
 
     def _get_container_unformatted(self, storage_client, account, container, transfer, transfer_object, transfer_container_paginated, objects):
@@ -760,12 +764,20 @@ class SynchronizeContainersPaginated():
                 # #############################################
 
                 try:
-                    headers, content = self.swift.get_object(container, obj.get('name'))
+                    headers, content = self.swift.get_object(
+                        container,
+                        obj.get('name'),
+                        resp_chunk_size=self.resp_chunk_size
+                    )
                 except requests.exceptions.ConnectionError:
                     try:
                         self.conn = self.keystone.get_keystone_connection()
                         self.swift = Swift(self.conn, self.project_id)
-                        headers, content = self.swift.get_object(container, obj.get('name'))
+                        headers, content = self.swift.get_object(
+                            container,
+                            obj.get('name'),
+                            resp_chunk_size=self.resp_chunk_size
+                        )
                     except IncompleteRead:
                         transfer.count_error += 1
                         self.app.logger.error("[{}] 500 Get object '{}/{}': Keystone authorization failure".format(
@@ -897,17 +909,38 @@ class SynchronizeContainersPaginated():
                     if obj.get('last_modified'):
                         metadata['last-modified'] = obj.get('last_modified') + '+00:00'
 
-                    blob.upload_from_string(
-                        content,
-                        content_type=obj.get('content_type'),
-                        num_retries=3,
-                        timeout=900
-                    )
+                    size = int(headers["content-length"])
+                    blob.content_type = obj.get('content_type')
+
+                    if size < self.resp_chunk_size:
+                        # self.app.logger.info('############## upload_from_file ################')
+                        with tempfile.TemporaryFile(mode="w+b") as tmp:
+                            while True:
+                                chunk = content.read(self.resp_chunk_size)
+                                if not chunk:
+                                    break
+                                tmp.write(chunk)
+                            tmp.seek(0)
+
+                            blob.upload_from_file(
+                                tmp,
+                                rewind=True,
+                                size=size,
+                            )
+                    else:
+                        # self.app.logger.info('############## blob.open ################')
+                        with blob.open("wb", chunk_size=8 * 1024 * 1024) as gcs_file:
+                            for chunk in content:
+                                if not chunk:
+                                    continue
+
+                                gcs_file.write(chunk)
+
                     self.app.logger.info("[{}] 201 PUT object '{}' {} {}: Created".format(
                         transfer_object.project_name,
                         obj_path,
                         obj.get('content_type'),
-                        len(content)
+                        headers["content-length"]
                     ))
                 except BadRequest:
                     transfer.count_error += 1

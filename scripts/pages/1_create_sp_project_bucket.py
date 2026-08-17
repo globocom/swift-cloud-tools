@@ -1,5 +1,5 @@
 # EXAMPLE
-# python scripts/pages/1_create_sp_project_bucket.py fee525a415c44147896903fab66d6855 alanvitor gglobo-s3-prod-hdg-prd False development
+# python scripts/pages/1_create_sp_project_bucket.py fee525a415c44147896903fab66d6855 alanvitor gglobo-s3-prod-hdg-prd False development prod
 
 import time
 import sys
@@ -35,6 +35,13 @@ legacy_swift_name = params[1]
 cloud_project_id = params[2]
 applying = eval(params[3])
 environment = params[4]
+suffix_env = params[5]
+
+suffix = {
+    "dev": "s4-dv-1e528d",
+    "qa": "s4-qa-44dc8f",
+    "prod": "s4-pd-6a79ea"
+}
 
 app = create_app(f"config/{environment}_config.py")
 ctx = app.app_context()
@@ -271,7 +278,7 @@ if applying:
 
         project_id = cursor.fetchone()[0]
 
-    bucket_name = f"globo-s4_{legacy_swift_name}"
+    bucket_name = f"{legacy_swift_name}__{suffix.get(suffix_env)}"
 
     try:
         bucket = storage_client.get_bucket(

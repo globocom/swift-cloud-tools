@@ -14,7 +14,7 @@ from keystoneclient.v3 import client as keystone_client
 from swiftclient import client as swift_client
 from google.oauth2 import service_account
 from google.cloud import storage
-from google.cloud import billing_v1
+# from google.cloud import billing_v1
 from prometheus_api_client import PrometheusConnect
 
 logger = logging.getLogger(__name__)
@@ -60,33 +60,33 @@ class Google():
             json.loads(os.environ.get("GCP_CREDENTIALS"))
         )
 
-    def get_billing_client(self):
-        credentials = self._get_credentials()
-        return billing_v1.CloudCatalogClient(
-            credentials=credentials
-        )
+    # def get_billing_client(self):
+    #     credentials = self._get_credentials()
+    #     return billing_v1.CloudCatalogClient(
+    #         credentials=credentials
+    #     )
 
-    def get_sku_price_from_service(self, service, sku, amount):
-        billing_client = self.get_billing_client()
-        request = billing_v1.ListSkusRequest(parent='services/{}'.format(service),)
-        skus = billing_client.list_skus(request=request)
-        name = 'services/{}/skus/{}'.format(service, sku)
-        price = 0.0
-        currency = ''
+    # def get_sku_price_from_service(self, service, sku, amount):
+    #     billing_client = self.get_billing_client()
+    #     request = billing_v1.ListSkusRequest(parent='services/{}'.format(service),)
+    #     skus = billing_client.list_skus(request=request)
+    #     name = 'services/{}/skus/{}'.format(service, sku)
+    #     price = 0.0
+    #     currency = ''
 
-        for item in skus:
-            if item.name == name:
-                pricing_info = item.pricing_info[0]
-                tiered_rates = pricing_info.pricing_expression.tiered_rates[0]
-                unit_price = tiered_rates.unit_price
-                price = unit_price.nanos / 1000000000
-                currency = unit_price.currency_code
-                break
+    #     for item in skus:
+    #         if item.name == name:
+    #             pricing_info = item.pricing_info[0]
+    #             tiered_rates = pricing_info.pricing_expression.tiered_rates[0]
+    #             unit_price = tiered_rates.unit_price
+    #             price = unit_price.nanos / 1000000000
+    #             currency = unit_price.currency_code
+    #             break
 
-        amount_gb = ((int(amount) / 1024) / 1024) / 1024
-        total = price * amount_gb
+    #     amount_gb = ((int(amount) / 1024) / 1024) / 1024
+    #     total = price * amount_gb
 
-        return {'currency': currency, 'price': f'{total:.6f}'}
+    #     return {'currency': currency, 'price': f'{total:.6f}'}
 
 
 class Keystone():
@@ -112,7 +112,7 @@ class Swift():
         self.storage_url = '{}/v1/AUTH_{}'.format(admin_url, project_id)
         self.http_conn = swift_client.http_connection(self.storage_url, insecure=False, timeout=3600)
         self.conn = connection
-        self.x_cloud_bypass = app.config.get('X_CLOUD_BYPASS')
+        # self.x_cloud_bypass = app.config.get('X_CLOUD_BYPASS')
 
     def set_account_meta_cloud(self):
         try:
@@ -151,7 +151,7 @@ class Swift():
                 end_marker=end_marker,
                 full_listing=False,
                 http_conn=self.http_conn,
-                headers={'X-Cloud-Bypass': self.x_cloud_bypass}
+                # headers={'X-Cloud-Bypass': self.x_cloud_bypass}
             )
         except Exception as err:
             raise err
@@ -167,7 +167,7 @@ class Swift():
                 marker=marker,
                 full_listing=full_listing,
                 http_conn=self.http_conn,
-                headers={'X-Cloud-Bypass': self.x_cloud_bypass}
+                # headers={'X-Cloud-Bypass': self.x_cloud_bypass}
             )
         except Exception as err:
             raise err
@@ -188,7 +188,7 @@ class Swift():
 
         return resp['status'], resp['reason']
 
-    def get_object(self, container, obj):
+    def get_object(self, container, obj, resp_chunk_size=None):
         try:
             return swift_client.get_object(
                 self.storage_url,
@@ -196,7 +196,8 @@ class Swift():
                 container,
                 obj,
                 http_conn=self.http_conn,
-                headers={'X-Cloud-Bypass': self.x_cloud_bypass}
+                # headers={'X-Cloud-Bypass': self.x_cloud_bypass},
+                resp_chunk_size=resp_chunk_size
             )
         except Exception as err:
             raise err
