@@ -1,5 +1,5 @@
 # EXAMPLE
-# python scripts/pages/1_create_sp_project_bucket.py fee525a415c44147896903fab66d6855 alanvitor gglobo-s3-prod-hdg-prd False development prod
+# python scripts/pages/1_create_sp_qa_project_bucket.py fee525a415c44147896903fab66d6855 alanvitor gglobo-s3-prod-hdg-prd False development prod
 
 import time
 import sys
@@ -61,14 +61,6 @@ cnx = mysql.connector.connect(
 )
 cursor = cnx.cursor(buffered=True)
 
-cnx_transfer = mysql.connector.connect(
-    user=os.environ.get("MYSQL_TRANSFER_USER"),
-    password=os.environ.get("MYSQL_TRANSFER_PASSWORD"),
-    host=os.environ.get("MYSQL_TRANSFER_HOST"),
-    database=os.environ.get("MYSQL_TRANSFER_NAME")
-)
-cursor_transfer = cnx_transfer.cursor(buffered=True)
-
 cnx_vault = mysql.connector.connect(
     user=os.environ.get("MYSQL_VAULT_USER"),
     password=os.environ.get("MYSQL_VAULT_PASSWORD"),
@@ -79,7 +71,8 @@ cursor_vault = cnx_vault.cursor(buffered=True)
 
 url = f"{keystone_admin_url}/v1/AUTH_{legacy_swift_id}"
 # headers = {'X-Cloud-Bypass': '136f8e168edb41afbbad3da60d048c64'}
-bucket_location = 'SOUTHAMERICA-EAST1'
+# bucket_location = 'SOUTHAMERICA-EAST1'
+bucket_location = 'us-east1'
 container_count_gcp = 0
 marker = None
 
@@ -188,12 +181,6 @@ def _create_containers(*containers):
             except IntegrityError:
                 pass
 
-            # blob.upload_from_string('',
-            #     content_type='application/directory',
-            #     num_retries=3,
-            #     timeout=30
-            # )
-
         container_count_gcp += 1
 
         print(f"{bcolors.OKCYAN}Criando container '{container_name}'{bcolors.ENDC} - {bcolors.OKGREEN}{bcolors.BOLD}ok{bcolors.BOLD}{bcolors.ENDC} - {container_count_gcp}")
@@ -202,48 +189,6 @@ print(f"\n{bcolors.OKCYAN}PROJETO - {bcolors.ENDC}{bcolors.OKGREEN}{legacy_swift
 print(f"{bcolors.OKCYAN}==========================================={bcolors.ENDC}")
 
 if applying:
-    try:
-        sql = "INSERT INTO `transfer_project` (" \
-                    "`project_id`," \
-                    "`project_name`," \
-                    "`environment`," \
-                    "`container_count_swift`," \
-                    "`object_count_swift`," \
-                    "`bytes_used_swift`," \
-                    "`last_object`," \
-                    "`count_error`," \
-                    "`container_count_gcp`," \
-                    "`object_count_gcp`," \
-                    "`bytes_used_gcp`," \
-                    "`initial_date`," \
-                    "`final_date`" \
-                ") VALUES (" \
-                    "'%s'," \
-                    "'%s'," \
-                    "'pages'," \
-                    "%s," \
-                    "%s," \
-                    "%s," \
-                    "''," \
-                    "0," \
-                    "0," \
-                    "0," \
-                    "0," \
-                    "NULL," \
-                    "NULL" \
-                ");" % (
-                    legacy_swift_id,
-                    legacy_swift_name,
-                    container_count_dccm,
-                    object_count_dccm,
-                    bytes_used_dccm
-                )
-        query = (sql)
-        cursor_transfer.execute(query)
-        cnx_transfer.commit()
-    except IntegrityError:
-        pass
-
     try:
         project_id = uuid.uuid4()
 
