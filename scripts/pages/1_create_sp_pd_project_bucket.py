@@ -1,10 +1,9 @@
 # EXAMPLE
-# python scripts/pages/1_create_sp_project_bucket.py fee525a415c44147896903fab66d6855 alanvitor gglobo-s3-prod-hdg-prd False development prod
+# python scripts/pages/1_create_sp_pd_project_bucket.py fee525a415c44147896903fab66d6855 alanvitor gglobo-s3-prod-hdg-prd False development prod
 
 import time
 import sys
 import os
-import uuid
 import mysql.connector
 
 from datetime import datetime
@@ -136,7 +135,7 @@ def _create_containers(*containers):
         # blob = bucket.blob(container_name + '/')
 
         read = False
-        cors_origins = ''
+        cors_origins = "[]"
 
         for item in meta.items():
             key, value = item
@@ -154,11 +153,9 @@ def _create_containers(*containers):
 
         if applying:
             data_atual = datetime.now()
-            bucket_id = uuid.uuid4()
 
             try:
-                sql = "INSERT INTO `bucket` (" \
-                            "`id`," \
+                sql = "INSERT INTO `buckets` (" \
                             "`project_id`," \
                             "`name`," \
                             "`external`," \
@@ -168,13 +165,11 @@ def _create_containers(*containers):
                         ") VALUES (" \
                             "'%s'," \
                             "'%s'," \
-                            "'%s'," \
                             "%s," \
                             "'%s'," \
                             "'%s'," \
                             "'%s'" \
                         ");" % (
-                            bucket_id,
                             project_id,
                             container_name,
                             read,
@@ -245,46 +240,70 @@ if applying:
         pass
 
     try:
-        project_id = uuid.uuid4()
+        data_atual = datetime.now()
 
-        sql = "INSERT INTO `project` (" \
-                    "`id`," \
-                    "`cloud_id`," \
-                    "`legacy_swift_id`," \
-                    "`legacy_swift_name`," \
-                    "`cloud_project_id`," \
+        sql = "INSERT INTO `projects` (" \
+                    "`legacy_id`," \
+                    "`legacy_name`," \
                     "`team`," \
-                    "`created_by`" \
+                    "`created_by`," \
+                    "`updated_at`" \
                 ") VALUES (" \
-                    "'%s'," \
-                    "%s," \
                     "'%s'," \
                     "'%s'," \
                     "'%s'," \
                     "'%s'," \
                     "'%s'" \
                 ");" % (
-                    project_id,
-                    1,
                     legacy_swift_id,
                     legacy_swift_name,
-                    cloud_project_id,
                     'storm',
                     'admin',
+                    data_atual
                 )
         query = (sql)
         cursor.execute(query)
         cnx.commit()
+
+        project_id = cursor.lastrowid
     except IntegrityError:
-        sql = "select id " \
-              "from project " \
-              "where cloud_id = 1 " \
-              "and legacy_swift_id = '%s';" % legacy_swift_id
+        sql = "select a.id " \
+              "from projects a, " \
+              "projects_clouds b " \
+              "where a.id = b.project_id " \
+              "and b.cloud_id = 1 " \
+              "and a.legacy_id = '%s';" % legacy_swift_id
 
         query = (sql)
         cursor.execute(query)
 
         project_id = cursor.fetchone()[0]
+
+    sql = "select id " \
+          "from clouds " \
+          "where name = 'gcp';"
+
+    query = (sql)
+    cursor.execute(query)
+
+    cloud_id = cursor.fetchone()[0]
+
+    sql = "INSERT INTO `projects_clouds` (" \
+                "`cloud_id`," \
+                "`project_id`," \
+                "`created_by`" \
+            ") VALUES (" \
+                "%s," \
+                "%s," \
+                "'%s'" \
+            ");" % (
+                cloud_id,
+                project_id,
+                'admin'
+            )
+    query = (sql)
+    cursor.execute(query)
+    cnx.commit()
 
     bucket_name = f"{legacy_swift_name}__{suffix.get(suffix_env)}"
 
@@ -319,7 +338,7 @@ if applying:
                 bucket_name,
                 location=bucket_location
             )
-            bucket.labels = {"team_name": team_name}
+            bucket.labels = {"team_name": team_name.lower()}
             bucket.update()
             deadline = Retry(deadline=60)
             bucket.patch(timeout=10, retry=deadline)

@@ -1,5 +1,5 @@
 # EXAMPLE
-# python scripts/pages/2_create_sp_bucket_marker.py fee525a415c44147896903fab66d6855 False development
+# python scripts/pages/2_create_sp_pd_bucket_marker.py fee525a415c44147896903fab66d6855 False development
 
 import sys
 import os
