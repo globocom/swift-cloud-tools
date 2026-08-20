@@ -1,9 +1,10 @@
 # EXAMPLE
-# python scripts/pages/1_create_sp_pd_project_bucket.py fee525a415c44147896903fab66d6855 alanvitor gglobo-s3-prod-hdg-prd False development prod
+# python scripts/pages/1_create_sp_pd_project_bucket.py fee525a415c44147896903fab66d6855 alanvitor False development prod
 
 import time
 import sys
 import os
+import json
 import mysql.connector
 
 from datetime import datetime
@@ -31,10 +32,9 @@ class bcolors:
 params = sys.argv[1:]
 legacy_swift_id = params[0]
 legacy_swift_name = params[1]
-cloud_project_id = params[2]
-applying = eval(params[3])
-environment = params[4]
-suffix_env = params[5]
+applying = eval(params[2])
+environment = params[3]
+suffix_env = params[4]
 
 suffix = {
     "dev": "s4-dv-1e528d",
@@ -148,7 +148,7 @@ def _create_containers(*containers):
 
             if key == 'x-container-meta-access-control-allow-origin':
                 if value:
-                    cors_origins = value
+                    cors_origins = json.dumps(value.split(" "))
                 continue
 
         if applying:
@@ -338,7 +338,7 @@ if applying:
                 bucket_name,
                 location=bucket_location
             )
-            bucket.labels = {"team_name": team_name.lower()}
+            bucket.labels = {"time_custeio_s4": team_name.lower()}
             bucket.update()
             deadline = Retry(deadline=60)
             bucket.patch(timeout=10, retry=deadline)
