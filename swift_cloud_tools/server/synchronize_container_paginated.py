@@ -1,13 +1,14 @@
 # -*- coding: utf-8 -*-
 import itertools
 import requests
-import tempfile
 import time
 import json
 import os
 import gc
+import io
 
 from datetime import datetime
+from http import HTTPStatus
 from random import uniform
 from flask import Response
 from threading import Thread
@@ -18,6 +19,7 @@ from google.api_core.retry import Retry
 from swiftclient import client as swift_client
 from keystoneauth1.exceptions.auth import AuthorizationFailure
 from http.client import IncompleteRead
+from swiftclient.exceptions import ClientException
 
 from swift_cloud_tools.server.utils import Keystone, Swift, Google, Transfer
 from swift_cloud_tools.models import TransferProject, TransferContainerPaginated, TransferContainerPaginatedError, db
@@ -61,10 +63,6 @@ class SynchronizeContainersPaginated():
         if self.transfer_object:
             self.project_name = self.transfer_object.project_name
 
-        self.keystone = Keystone()
-        self.conn = self.keystone.get_keystone_connection()
-        self.swift = Swift(self.conn, project_id)
-
     def synchronize(self, project_id, container_name, marker, hostname):
         """Get project in swift."""
 
@@ -84,6 +82,10 @@ class SynchronizeContainersPaginated():
 
         google = Google()
         transfer = Transfer()
+
+        keystone = Keystone()
+        conn = keystone.get_keystone_connection()
+        swift = Swift(conn, project_id)
 
         while True:
             try:
@@ -131,12 +133,12 @@ class SynchronizeContainersPaginated():
         ########################################
 
         try:
-            meta, objects = self.swift.get_container(container_name, marker=marker, full_listing=False, delimiter=None)
+            meta, objects = swift.get_container(container_name, marker=marker, full_listing=False, delimiter=None)
         except requests.exceptions.ConnectionError:
             try:
-                self.conn = self.keystone.get_keystone_connection()
-                self.swift = Swift(self.conn, project_id)
-                meta, objects = self.swift.get_container(container_name, marker=marker, full_listing=False, delimiter=None)
+                conn = keystone.get_keystone_connection()
+                swift = Swift(conn, project_id)
+                meta, objects = swift.get_container(container_name, marker=marker, full_listing=False, delimiter=None)
             except AuthorizationFailure:
                 self.app.logger.error("[{}] 500 Get container '{}', Marker '{}': Keystone authorization failure".format(
                     transfer_object.project_name,
@@ -656,6 +658,10 @@ class SynchronizeContainersPaginated():
         ctx = self.app.app_context()
         ctx.push()
 
+        keystone = Keystone()
+        conn = keystone.get_keystone_connection()
+        swift = Swift(conn, self.project_id)
+
         bucket = storage_client.get_bucket(
             account,
             timeout=30
@@ -764,16 +770,16 @@ class SynchronizeContainersPaginated():
                 # #############################################
 
                 try:
-                    headers, content = self.swift.get_object(
+                    headers, content = swift.get_object(
                         container,
                         obj.get('name'),
                         resp_chunk_size=self.resp_chunk_size
                     )
                 except requests.exceptions.ConnectionError:
                     try:
-                        self.conn = self.keystone.get_keystone_connection()
-                        self.swift = Swift(self.conn, self.project_id)
-                        headers, content = self.swift.get_object(
+                        conn = keystone.get_keystone_connection()
+                        swift = Swift(conn, self.project_id)
+                        headers, content = swift.get_object(
                             container,
                             obj.get('name'),
                             resp_chunk_size=self.resp_chunk_size
@@ -822,6 +828,10 @@ class SynchronizeContainersPaginated():
                                 ))
                                 time.sleep(5)
                         continue
+                    except ClientException as err:
+                        if err.http_status == HTTPStatus.NOT_FOUND.value:
+                            transfer.count_error += 1
+                            continue
                     except Exception as err:
                         transfer.count_error += 1
                         self.app.logger.error("[{}] 500 Get object '{}/{}': {}".format(
@@ -868,6 +878,10 @@ class SynchronizeContainersPaginated():
                             ))
                             time.sleep(5)
                     continue
+                except ClientException as err:
+                    if err.http_status == HTTPStatus.NOT_FOUND.value:
+                        transfer.count_error += 1
+                        continue
                 except Exception as err:
                     transfer.count_error += 1
                     self.app.logger.error("[{}] 500 Get object '{}/{}': {}".format(
@@ -914,19 +928,9 @@ class SynchronizeContainersPaginated():
 
                     if size < self.resp_chunk_size:
                         # self.app.logger.info('############## upload_from_file ################')
-                        with tempfile.TemporaryFile(mode="w+b") as tmp:
-                            while True:
-                                chunk = content.read(self.resp_chunk_size)
-                                if not chunk:
-                                    break
-                                tmp.write(chunk)
-                            tmp.seek(0)
-
-                            blob.upload_from_file(
-                                tmp,
-                                rewind=True,
-                                size=size,
-                            )
+                        blob.upload_from_file(
+                            io.BytesIO(content.read())
+                        )
                     else:
                         # self.app.logger.info('############## blob.open ################')
                         with blob.open("wb", chunk_size=8 * 1024 * 1024) as gcs_file:
