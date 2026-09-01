@@ -669,90 +669,90 @@ class SynchronizeContainersPaginated():
 
         for obj in objects:
             if len(obj.get('name', '')) > 0 and obj.get('name','')[-1] == '/':
-                prefix = obj.get('name')
-                blob = bucket.blob('{}/{}'.format(container, prefix))
+                # prefix = obj.get('name')
+                # blob = bucket.blob('{}/{}'.format(container, prefix))
 
-                try:
-                    blob.upload_from_string('',
-                        content_type='application/directory',
-                        num_retries=3,
-                        timeout=30
-                    )
-                    self.app.logger.info("[{}] 201 PUT folder '{}/{}': Created".format(
-                        transfer_object.project_name,
-                        container,
-                        prefix
-                    ))
-                except BadRequest:
-                    transfer.count_error += 1
-                    self.app.logger.error("[{}] 400 PUT folder '{}/{}': BadRequest".format(
-                        transfer_object.project_name,
-                        container,
-                        prefix
-                    ))
-                    while True:
-                        try:
-                            transfer_error = TransferContainerPaginatedError(
-                                object_error="{}/{}".format(container, prefix),
-                                transfer_container_paginated_id=transfer_container_paginated.id,
-                                created=datetime.now()
-                            )
-                            transfer_error.save()
-                            break
-                        except Exception as err:
-                            self.app.logger.error("[synchronize] 500 Save 'mysql': {}".format(
-                                err
-                            ))
-                            time.sleep(5)
-                    continue
-                except requests.exceptions.ReadTimeout:
-                    transfer.count_error += 1
-                    self.app.logger.error("[{}] 504 PUT folder '{}/{}': ReadTimeout".format(
-                        transfer_object.project_name,
-                        container,
-                        prefix
-                    ))
-                    while True:
-                        try:
-                            transfer_error = TransferContainerPaginatedError(
-                                object_error="{}/{}".format(container, prefix),
-                                transfer_container_paginated_id=transfer_container_paginated.id,
-                                created=datetime.now()
-                            )
-                            transfer_error.save()
-                            break
-                        except Exception as err:
-                            self.app.logger.error("[synchronize] 500 Save 'mysql': {}".format(
-                                err
-                            ))
-                            time.sleep(5)
-                    continue
-                except Exception as err:
-                    transfer.count_error += 1
-                    self.app.logger.error("[{}] 500 PUT folder '{}/{}': {}".format(
-                        transfer_object.project_name,
-                        container,
-                        prefix,
-                        err
-                    ))
-                    while True:
-                        try:
-                            transfer_error = TransferContainerPaginatedError(
-                                object_error="{}/{}".format(container, prefix),
-                                transfer_container_paginated_id=transfer_container_paginated.id,
-                                created=datetime.now()
-                            )
-                            transfer_error.save()
-                            break
-                        except Exception as err:
-                            self.app.logger.error("[synchronize] 500 Save 'mysql': {}".format(
-                                err
-                            ))
-                            time.sleep(5)
-                    continue
+                # try:
+                #     blob.upload_from_string('',
+                #         content_type='application/directory',
+                #         num_retries=3,
+                #         timeout=30
+                #     )
+                #     self.app.logger.info("[{}] 201 PUT folder '{}/{}': Created".format(
+                #         transfer_object.project_name,
+                #         container,
+                #         prefix
+                #     ))
+                # except BadRequest:
+                #     transfer.count_error += 1
+                #     self.app.logger.error("[{}] 400 PUT folder '{}/{}': BadRequest".format(
+                #         transfer_object.project_name,
+                #         container,
+                #         prefix
+                #     ))
+                #     while True:
+                #         try:
+                #             transfer_error = TransferContainerPaginatedError(
+                #                 object_error="{}/{}".format(container, prefix),
+                #                 transfer_container_paginated_id=transfer_container_paginated.id,
+                #                 created=datetime.now()
+                #             )
+                #             transfer_error.save()
+                #             break
+                #         except Exception as err:
+                #             self.app.logger.error("[synchronize] 500 Save 'mysql': {}".format(
+                #                 err
+                #             ))
+                #             time.sleep(5)
+                #     continue
+                # except requests.exceptions.ReadTimeout:
+                #     transfer.count_error += 1
+                #     self.app.logger.error("[{}] 504 PUT folder '{}/{}': ReadTimeout".format(
+                #         transfer_object.project_name,
+                #         container,
+                #         prefix
+                #     ))
+                #     while True:
+                #         try:
+                #             transfer_error = TransferContainerPaginatedError(
+                #                 object_error="{}/{}".format(container, prefix),
+                #                 transfer_container_paginated_id=transfer_container_paginated.id,
+                #                 created=datetime.now()
+                #             )
+                #             transfer_error.save()
+                #             break
+                #         except Exception as err:
+                #             self.app.logger.error("[synchronize] 500 Save 'mysql': {}".format(
+                #                 err
+                #             ))
+                #             time.sleep(5)
+                #     continue
+                # except Exception as err:
+                #     transfer.count_error += 1
+                #     self.app.logger.error("[{}] 500 PUT folder '{}/{}': {}".format(
+                #         transfer_object.project_name,
+                #         container,
+                #         prefix,
+                #         err
+                #     ))
+                #     while True:
+                #         try:
+                #             transfer_error = TransferContainerPaginatedError(
+                #                 object_error="{}/{}".format(container, prefix),
+                #                 transfer_container_paginated_id=transfer_container_paginated.id,
+                #                 created=datetime.now()
+                #             )
+                #             transfer_error.save()
+                #             break
+                #         except Exception as err:
+                #             self.app.logger.error("[synchronize] 500 Save 'mysql': {}".format(
+                #                 err
+                #             ))
+                #             time.sleep(5)
+                #     continue
 
-                del blob
-                gc.collect()
+                # del blob
+                # gc.collect()
 
                 transfer.object_count_gcp += 1
             else:
