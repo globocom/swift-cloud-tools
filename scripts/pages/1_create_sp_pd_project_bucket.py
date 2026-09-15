@@ -31,7 +31,7 @@ class bcolors:
 
 params = sys.argv[1:]
 legacy_swift_id = params[0]
-legacy_swift_name = params[1]
+legacy_swift_name = params[1].lower()
 applying = eval(params[2])
 environment = params[3]
 suffix_env = params[4]
@@ -100,17 +100,21 @@ bytes_used_dccm = int(account_stat.get('x-account-bytes-used'))
 
 def _create_containers(*containers):
     global container_count_gcp
+    global container_count_dccm
     http_conn_local = swift_client.http_connection(url, insecure=False, timeout=10800)
     for container in containers:
         container_name = container.get('name')
 
         if not container_name:
+            container_count_dccm -= 1
             continue
 
         if '.trash-' in container_name:
+            container_count_dccm -= 1
             continue
 
         if '_version_' in container_name:
+            container_count_dccm -= 1
             continue
 
         while True:

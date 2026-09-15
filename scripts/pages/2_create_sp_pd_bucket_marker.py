@@ -90,12 +90,15 @@ for container in containers:
     marker = None
 
     if not container_name:
+        container_count_dccm -= 1
         continue
 
     if '.trash-' in container_name:
+        container_count_dccm -= 1
         continue
 
     if '_version_' in container_name:
+        container_count_dccm -= 1
         continue
 
     # sql = f"INSERT INTO `transfer_container_paginated` (`project_id`, `project_name`, `container_name`, `marker`, `hostname`, `environment`, `object_count_swift`, `bytes_used_swift`, `count_error`, `object_count_gcp`, `bytes_used_gcp`, `initial_date`, `final_date`) VALUES ('{legacy_swift_id}', '{project_name}', '{container_name}', NULL, NULL, 'pages', 0, 0, 0, 0, 0, NULL, NULL);"
