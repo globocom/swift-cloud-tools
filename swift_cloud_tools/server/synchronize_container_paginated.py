@@ -920,9 +920,6 @@ class SynchronizeContainersPaginated():
                     if headers.get('content-disposition'):
                         blob.content_disposition = headers.get('content-disposition')
 
-                    if obj.get('last_modified'):
-                        metadata['last-modified'] = obj.get('last_modified') + '+00:00'
-
                     for k, v in headers.items():
                         if 'x-object-meta' in k.lower():
                             metadata[k] = v
