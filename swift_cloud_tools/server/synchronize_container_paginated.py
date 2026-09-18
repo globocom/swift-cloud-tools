@@ -923,6 +923,13 @@ class SynchronizeContainersPaginated():
                     if obj.get('last_modified'):
                         metadata['last-modified'] = obj.get('last_modified') + '+00:00'
 
+                    for k, v in headers.items():
+                        if 'x-object-meta' in k.lower():
+                            metadata[k] = v
+
+                    if len(metadata):
+                        blob.metadata = metadata
+
                     size = int(headers["content-length"])
                     blob.content_type = obj.get('content_type')
 
