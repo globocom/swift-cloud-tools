@@ -915,7 +915,7 @@ class SynchronizeContainersPaginated():
                         blob.cache_control = headers.get('cache-control')
 
                     if headers.get('content-encoding'):
-                        metadata['content-encoding'] = headers.get('content-encoding')
+                        blob.content_encoding = headers.get('content-encoding')
 
                     if headers.get('content-disposition'):
                         blob.content_disposition = headers.get('content-disposition')
